@@ -38,20 +38,28 @@ jobs:
 
       - name: Prepare Firebase and signing configuration
         env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+          FIREBASE_APPLET_CONFIG_XML: ${{ secrets.FIREBASE_APPLET_CONFIG_XML }}
           FIREBASE_APPLET_CONFIG_XML_BASE64: ${{ secrets.FIREBASE_APPLET_CONFIG_XML_BASE64 }}
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+          if [ -n "$GOOGLE_SERVICES_JSON" ]; then
+            printf '%s\n' "$GOOGLE_SERVICES_JSON" > app/google-services.json
+            echo "Wrote app/google-services.json from GOOGLE_SERVICES_JSON secret."
+          elif [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
             echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
-            echo "Decoded app/google-services.json from GitHub Secret."
+            echo "Decoded app/google-services.json from GOOGLE_SERVICES_JSON_BASE64 secret."
           else
-            echo "Info: GOOGLE_SERVICES_JSON_BASE64 not set; building with MissingGoogleServicesStrategy.WARN."
+            echo "Info: GOOGLE_SERVICES_JSON secret not set; building without Firebase config."
           fi
 
-          if [ -n "$FIREBASE_APPLET_CONFIG_XML_BASE64" ]; then
+          if [ -n "$FIREBASE_APPLET_CONFIG_XML" ]; then
+            printf '%s\n' "$FIREBASE_APPLET_CONFIG_XML" > app/src/main/res/values/firebase_applet_config.xml
+            echo "Wrote firebase_applet_config.xml from FIREBASE_APPLET_CONFIG_XML secret."
+          elif [ -n "$FIREBASE_APPLET_CONFIG_XML_BASE64" ]; then
             echo "$FIREBASE_APPLET_CONFIG_XML_BASE64" | base64 --decode > app/src/main/res/values/firebase_applet_config.xml
-            echo "Decoded firebase_applet_config.xml from GitHub Secret."
+            echo "Decoded firebase_applet_config.xml from FIREBASE_APPLET_CONFIG_XML_BASE64 secret."
           else
             cat << 'EOF' > app/src/main/res/values/firebase_applet_config.xml
           <?xml version="1.0" encoding="utf-8"?>
@@ -59,7 +67,7 @@ jobs:
               <string name="firestore_database_id" translatable="false">ci-placeholder-db</string>
           </resources>
           EOF
-            echo "Info: FIREBASE_APPLET_CONFIG_XML_BASE64 not set; using placeholder firestore_database_id for CI build."
+            echo "Info: FIREBASE_APPLET_CONFIG_XML not set; using placeholder firestore_database_id for CI build."
           fi
 
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then

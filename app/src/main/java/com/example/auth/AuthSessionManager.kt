@@ -15,6 +15,7 @@ import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -35,6 +36,10 @@ import kotlinx.coroutines.withContext
 object AuthSessionManager {
 
     private const val TAG = "RainCubeAuth"
+
+    fun isFirebaseInitialized(context: Context): Boolean {
+        return FirebaseApp.getApps(context.applicationContext).isNotEmpty()
+    }
 
     fun authStateFlow(auth: FirebaseAuth = Firebase.auth): Flow<FirebaseUser?> = callbackFlow {
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
@@ -72,6 +77,11 @@ object AuthSessionManager {
         onAuthSuccess: (AuthenticatedUser) -> Unit,
         onUnauthenticated: () -> Unit
     ) {
+        if (!isFirebaseInitialized(context)) {
+            onUnauthenticated()
+            return
+        }
+
         val currentUser = Firebase.auth.currentUser
         if (currentUser != null) {
             onAuthSuccess(currentUser.toAuthenticatedUser())
@@ -128,6 +138,11 @@ object AuthSessionManager {
         onAuthCancelled: (String) -> Unit,
         onAuthError: (String) -> Unit
     ) {
+        if (!isFirebaseInitialized(context)) {
+            onAuthError(context.getString(R.string.auth_config_missing))
+            return
+        }
+
         val clientId = resolveWebClientId(context)
         if (clientId == null) {
             onAuthError(context.getString(R.string.auth_config_missing))
