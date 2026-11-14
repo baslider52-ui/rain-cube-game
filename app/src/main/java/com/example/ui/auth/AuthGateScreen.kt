@@ -143,7 +143,7 @@ fun AuthGateScreen(
                         Image(
                             painter = painterResource(id = R.drawable.ic_rain_cube_brand),
                             contentDescription = stringResource(id = R.string.app_name),
-                            contentScale = ContentScale.Crop,
+                            contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize()
                         )
                     }

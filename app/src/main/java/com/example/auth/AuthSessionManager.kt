@@ -1,13 +1,19 @@
 package com.example.auth
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.GetCredentialInterruptedException
+import androidx.credentials.exceptions.GetCredentialProviderConfigurationException
+import androidx.credentials.exceptions.GetCredentialUnsupportedException
 import androidx.credentials.exceptions.NoCredentialException
 import com.example.R
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
@@ -20,8 +26,11 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -36,9 +45,18 @@ import kotlinx.coroutines.withContext
 object AuthSessionManager {
 
     private const val TAG = "RainCubeAuth"
+    private val signOutScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+    private tailrec fun Context.findActivity(): Activity? = when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
     fun isFirebaseInitialized(context: Context): Boolean {
-        return FirebaseApp.getApps(context.applicationContext).isNotEmpty()
+        return runCatching {
+            FirebaseApp.getApps(context.applicationContext).isNotEmpty()
+        }.getOrDefault(false)
     }
 
     fun authStateFlow(auth: FirebaseAuth = Firebase.auth): Flow<FirebaseUser?> = callbackFlow {
@@ -59,6 +77,7 @@ object AuthSessionManager {
         )
     }
 
+    @SuppressLint("DiscouragedApi")
     fun resolveWebClientId(context: Context): String? {
         val resId = context.resources.getIdentifier(
             "default_web_client_id",
@@ -94,7 +113,8 @@ object AuthSessionManager {
             return
         }
 
-        val credentialManager = CredentialManager.create(context)
+        val hostContext = context.findActivity() ?: context
+        val credentialManager = CredentialManager.create(hostContext)
         val googleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(true)
             .setServerClientId(clientId)
@@ -107,7 +127,7 @@ object AuthSessionManager {
 
         scope.launch {
             try {
-                val result = credentialManager.getCredential(context, request)
+                val result = credentialManager.getCredential(hostContext, request)
                 val credential = result.credential
                 if (credential is CustomCredential &&
                     credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
@@ -124,6 +144,8 @@ object AuthSessionManager {
                 } else {
                     onUnauthenticated()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.d(TAG, "Silent Google Sign-In skipped/unavailable: ${e.message}")
                 onUnauthenticated()
@@ -149,7 +171,7 @@ object AuthSessionManager {
             return
         }
 
-        val activityContext = context as? Activity
+        val activityContext = context.findActivity()
         if (activityContext == null) {
             onAuthError("Google hesap seçici yalnızca aktif bir ekran bağlamından açılabilir.")
             return
@@ -175,43 +197,69 @@ object AuthSessionManager {
                     if (firebaseUser != null) {
                         onAuthSuccess(firebaseUser.toAuthenticatedUser())
                     } else {
-                        onAuthError("Firebase Authentication oturumu oluşturulamadı.")
+                        onAuthError("Oturum oluşturulamadı. Lütfen tekrar deneyin.")
                     }
                 } else {
                     onAuthError("Beklenmeyen kimlik bilgisi türü alındı.")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: GetCredentialCancellationException) {
-                Log.w(TAG, "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
+                Log.w(TAG, "Google Sign-In cancelled: ${e.message}")
                 onAuthCancelled(context.getString(R.string.auth_cancelled_message))
             } catch (e: NoCredentialException) {
-                Log.w(TAG, "No Google credential available on device: ${e.message}", e)
+                Log.w(TAG, "No Google credential available: ${e.message}")
                 onAuthError(context.getString(R.string.auth_no_credential_message))
+            } catch (e: GetCredentialProviderConfigurationException) {
+                Log.e(TAG, "Credential provider configuration error: ${e.errorMessage}", e)
+                onAuthError(context.getString(R.string.auth_play_services_error))
+            } catch (e: GetCredentialUnsupportedException) {
+                Log.e(TAG, "Credential manager unsupported: ${e.errorMessage}", e)
+                onAuthError(context.getString(R.string.auth_play_services_error))
+            } catch (e: GetCredentialInterruptedException) {
+                Log.w(TAG, "Credential request interrupted: ${e.errorMessage}", e)
+                onAuthError("Giriş işlemi kesintiye uğradı. Lütfen tekrar deneyin.")
+            } catch (e: GetCredentialException) {
+                Log.e(TAG, "Google Sign-In credential exception: ${e.type} - ${e.errorMessage}", e)
+                onAuthError(mapCredentialErrorMessage(context, e.errorMessage?.toString()))
             } catch (e: Exception) {
                 Log.e(TAG, "Google Sign-In failed", e)
-                onAuthError(
-                    e.localizedMessage
-                        ?: "Google ile giriş başarısız oldu. SHA-1 ve Firebase yapılandırmasını kontrol edin."
-                )
+                onAuthError(mapCredentialErrorMessage(context, e.localizedMessage))
             }
+        }
+    }
+
+    private fun mapCredentialErrorMessage(context: Context, rawMessage: String?): String {
+        val msg = rawMessage.orEmpty()
+        return when {
+            msg.contains("16") || msg.contains("temporarily blocked", ignoreCase = true) ->
+                "Çok fazla deneme yapıldı veya Google giriş penceresi geçici olarak duraklatıldı. Kısa süre sonra tekrar deneyin."
+            msg.contains("28444") || msg.contains("Developer console", ignoreCase = true) ||
+                msg.contains("10:") ->
+                context.getString(R.string.auth_sha_mismatch_message)
+            msg.contains("network", ignoreCase = true) || msg.contains("7:") ->
+                "İnternet bağlantısı kurulamadı. Bağlantınızı kontrol edip tekrar deneyin."
+            else -> context.getString(R.string.auth_generic_error)
         }
     }
 
     fun signOut(
         context: Context,
-        scope: CoroutineScope,
         onSignOutComplete: () -> Unit = {}
     ) {
-        val credentialManager = CredentialManager.create(context.applicationContext)
-        scope.launch {
+        val appContext = context.applicationContext
+        val credentialManager = CredentialManager.create(appContext)
+        signOutScope.launch {
             withContext(NonCancellable) {
+                if (isFirebaseInitialized(appContext)) {
+                    runCatching { Firebase.auth.signOut() }
+                }
                 try {
                     credentialManager.clearCredentialState(ClearCredentialStateRequest())
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to clear credential state: ${e.message}")
-                } finally {
-                    Firebase.auth.signOut()
-                    onSignOutComplete()
                 }
+                onSignOutComplete()
             }
         }
     }

@@ -36,10 +36,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,9 +79,14 @@ fun PlayerHubScreen(
     viewModel: PlayerHubViewModel
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    var isSigningOut by remember { mutableStateOf(false) }
+    val hubState by viewModel.hubState.collectAsStateWithLifecycle()
     val stats by viewModel.playerStats.collectAsStateWithLifecycle()
     val syncNotice by viewModel.syncNotice.collectAsStateWithLifecycle()
+
+    val liveProfile = (hubState as? PlayerHubUiState.Ready)?.profile
+    val displayName = liveProfile?.displayName?.takeIf { it.isNotBlank() } ?: user.displayName
+    val photoUrl = liveProfile?.photoUrl?.takeIf { it.isNotBlank() } ?: user.photoUrl
 
     Scaffold(
         containerColor = MidnightVoid
@@ -117,7 +125,7 @@ fun PlayerHubScreen(
                             Image(
                                 painter = painterResource(id = R.drawable.ic_rain_cube_brand),
                                 contentDescription = stringResource(id = R.string.app_name),
-                                contentScale = ContentScale.Crop,
+                                contentScale = ContentScale.Fit,
                                 modifier = Modifier
                                     .size(40.dp)
                                     .clip(RoundedCornerShape(10.dp))
@@ -134,9 +142,16 @@ fun PlayerHubScreen(
 
                         IconButton(
                             onClick = {
-                                runCatching { AnalyticsTracker(context).logSignOut() }
-                                AuthSessionManager.signOut(context = context, scope = scope)
+                                if (!isSigningOut) {
+                                    isSigningOut = true
+                                    runCatching { AnalyticsTracker(context).logSignOut() }
+                                    AuthSessionManager.signOut(
+                                        context = context,
+                                        onSignOutComplete = { isSigningOut = false }
+                                    )
+                                }
                             },
+                            enabled = !isSigningOut,
                             modifier = Modifier
                                 .minimumInteractiveComponentSize()
                                 .testTag("sign_out_button")
@@ -166,10 +181,10 @@ fun PlayerHubScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            if (!user.photoUrl.isNullOrBlank()) {
+                            if (!photoUrl.isNullOrBlank()) {
                                 AsyncImage(
-                                    model = user.photoUrl,
-                                    contentDescription = user.displayName,
+                                    model = photoUrl,
+                                    contentDescription = displayName,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .size(60.dp)
@@ -187,7 +202,7 @@ fun PlayerHubScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Outlined.Person,
-                                        contentDescription = user.displayName,
+                                        contentDescription = displayName,
                                         tint = ElectricCyan,
                                         modifier = Modifier.size(28.dp)
                                     )
@@ -199,7 +214,7 @@ fun PlayerHubScreen(
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = user.displayName,
+                                    text = displayName,
                                     style = MaterialTheme.typography.headlineSmall,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
@@ -234,11 +249,39 @@ fun PlayerHubScreen(
 
                 syncNotice?.let { notice ->
                     item {
-                        Text(
-                            text = notice,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = PendingAmber
-                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = PendingAmberContainer
+                            ),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = notice,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = PendingAmber,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(
+                                    onClick = { viewModel.syncPlayerProfile() },
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("sync_retry_button")
+                                ) {
+                                    Text(
+                                        text = stringResource(id = R.string.btn_retry),
+                                        color = ElectricCyan
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 

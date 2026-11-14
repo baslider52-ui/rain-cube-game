@@ -1,5 +1,6 @@
 package com.example.core.config
 
+import android.annotation.SuppressLint
 import android.content.Context
 import com.example.BuildConfig
 import com.example.R
@@ -21,6 +22,7 @@ data class InfrastructureConfigSnapshot(
 
 object InfrastructureConfig {
 
+    @SuppressLint("DiscouragedApi")
     fun load(context: Context): InfrastructureConfigSnapshot {
         val databaseId = runCatching {
             context.getString(R.string.firestore_database_id).takeIf { it.isNotBlank() }

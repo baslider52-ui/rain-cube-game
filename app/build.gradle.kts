@@ -1,5 +1,6 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.time.Duration
+import java.util.Properties
 
 plugins {
   alias(libs.plugins.android.application)
@@ -9,6 +10,23 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+val versionPropsFile = rootProject.file("version.properties")
+val versionProps = Properties().apply {
+  if (versionPropsFile.exists()) {
+    versionPropsFile.inputStream().use { load(it) }
+  }
+}
+val propMajor = versionProps.getProperty("VERSION_MAJOR", "1").trim().toIntOrNull() ?: 1
+val propMinor = versionProps.getProperty("VERSION_MINOR", "0").trim().toIntOrNull() ?: 0
+val propPatch = versionProps.getProperty("VERSION_PATCH", "1").trim().toIntOrNull() ?: 1
+
+val resolvedVersionName =
+  (project.findProperty("appVersionName") as? String)?.takeIf { it.isNotBlank() }
+    ?: "$propMajor.$propMinor.$propPatch"
+val resolvedVersionCode =
+  (project.findProperty("appVersionCode") as? String)?.toIntOrNull()
+    ?: (propMajor * 10000 + propMinor * 100 + propPatch)
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
@@ -17,8 +35,8 @@ android {
     applicationId = "com.raincube.game"
     minSdk = 24
     targetSdk = 36
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = resolvedVersionCode
+    versionName = resolvedVersionName
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

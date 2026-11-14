@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      version_override:
+        description: 'İsteğe bağlı sürüm (ör. v1.1.0). Boş bırakılırsa otomatik artar.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -18,6 +23,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21
         uses: actions/setup-java@v5
@@ -36,6 +43,52 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
+      - name: Determine release version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_OVERRIDE: ${{ inputs.version_override }}
+        run: |
+          source version.properties
+          MAJOR="${VERSION_MAJOR:-1}"
+          MINOR="${VERSION_MINOR:-0}"
+          BASE_PATCH="${VERSION_PATCH:-1}"
+
+          CLEAN_OVERRIDE="${VERSION_OVERRIDE#v}"
+          if [[ "$CLEAN_OVERRIDE" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            NEXT_PATCH="${BASH_REMATCH[3]}"
+          else
+            EXISTING_TAGS="$(git tag -l "v${MAJOR}.${MINOR}.*" 2>/dev/null || true)"
+            GH_TAGS="$(gh release list --limit 200 --json tagName --jq '.[].tagName' 2>/dev/null || true)"
+            ALL_TAGS="$(printf '%s\n%s\n' "$EXISTING_TAGS" "$GH_TAGS" | grep -E "^v${MAJOR}\.${MINOR}\.[0-9]+$" || true)"
+
+            MAX_PATCH=-1
+            while IFS= read -r tag; do
+              [ -z "$tag" ] && continue
+              patch="${tag##*.}"
+              if [ "$patch" -gt "$MAX_PATCH" ] 2>/dev/null; then
+                MAX_PATCH="$patch"
+              fi
+            done <<< "$ALL_TAGS"
+
+            if [ "$MAX_PATCH" -ge "$BASE_PATCH" ]; then
+              NEXT_PATCH=$((MAX_PATCH + 1))
+            else
+              NEXT_PATCH="$BASE_PATCH"
+            fi
+          fi
+
+          VERSION_NAME="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+          VERSION_TAG="v${VERSION_NAME}"
+          VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + NEXT_PATCH))
+
+          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+          echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
+          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
+          echo "Resolved release version: ${VERSION_TAG} (versionCode=${VERSION_CODE})"
+
       - name: Prepare Firebase and signing configuration
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
@@ -51,7 +104,7 @@ jobs:
             echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
             echo "Decoded app/google-services.json from GOOGLE_SERVICES_JSON_BASE64 secret."
           else
-            echo "Info: GOOGLE_SERVICES_JSON secret not set; building without Firebase config."
+            echo "::warning::GOOGLE_SERVICES_JSON secret is NOT set; Firebase Auth/Firestore will be inactive in this APK."
           fi
 
           if [ -n "$FIREBASE_APPLET_CONFIG_XML" ]; then
@@ -67,7 +120,7 @@ jobs:
               <string name="firestore_database_id" translatable="false">ci-placeholder-db</string>
           </resources>
           EOF
-            echo "Info: FIREBASE_APPLET_CONFIG_XML not set; using placeholder firestore_database_id for CI build."
+            echo "::warning::FIREBASE_APPLET_CONFIG_XML not set; using placeholder firestore_database_id for CI build."
           fi
 
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
@@ -79,38 +132,90 @@ jobs:
               -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
             echo "Info: Generated ephemeral debug.keystore for CI build."
           fi
+          keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | grep -E "SHA1:|SHA256:" || true
 
       - name: Run unit tests
-        run: gradle :app:testDebugUnitTest --tests 'com.example.ExampleUnitTest' --tests 'com.example.ExampleRobolectricTest' --stacktrace
+        run: |
+          gradle :app:testDebugUnitTest \
+            --tests 'com.example.ExampleUnitTest' \
+            --tests 'com.example.ExampleRobolectricTest' \
+            -PappVersionName="${{ steps.version.outputs.version_name }}" \
+            -PappVersionCode="${{ steps.version.outputs.version_code }}" \
+            --stacktrace
 
-      - name: Build Debug APK
-        run: gradle :app:assembleDebug --stacktrace
+      - name: Build Versioned APK
+        run: |
+          gradle :app:assembleDebug \
+            -PappVersionName="${{ steps.version.outputs.version_name }}" \
+            -PappVersionCode="${{ steps.version.outputs.version_code }}" \
+            --stacktrace
 
-      - name: Prepare downloadable APK file
+      - name: Prepare downloadable APK and announcement notes
+        env:
+          VERSION_TAG: ${{ steps.version.outputs.version_tag }}
+          VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          VERSION_CODE: ${{ steps.version.outputs.version_code }}
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/RainCube-android.apk
+          APK_FILE="dist/RainCube-${VERSION_TAG}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$APK_FILE"
+
+          PREV_TAG="$(git tag -l 'v*.*.*' --sort=-v:refname | head -n 1 || true)"
+          if [ -n "$PREV_TAG" ]; then
+            CHANGES="$(git log "${PREV_TAG}..HEAD" --pretty=format:'- %s' --no-merges | head -n 15 || true)"
+          else
+            CHANGES="$(git log -n 5 --pretty=format:'- %s' --no-merges || true)"
+          fi
+          if [ -z "$CHANGES" ]; then
+            CHANGES="- Performans, kararlılık ve altyapı iyileştirmeleri."
+          fi
+
+          RELEASE_DATE="$(TZ='Europe/Istanbul' date '+%d.%m.%Y %H:%M')"
+
+          cat << EOF > dist/release_notes.md
+          ## 🎮 Rain Cube ${VERSION_TAG} Yayınlandı!
+
+          **Sürüm:** \`${VERSION_NAME}\` (Derleme \`${VERSION_CODE}\`)
+          **Yayın Tarihi:** ${RELEASE_DATE}
+
+          ### 📰 Bu Sürümde Neler Var?
+          ${CHANGES}
+
+          ---
+
+          ### 📱 Android Cihaza Kurulum
+          1. Aşağıdaki **Assets** bölümünden **\`RainCube-${VERSION_TAG}.apk\`** dosyasını indirin.
+          2. İndirilen APK dosyasına dokunup kurulumu onaylayın.
+          3. Uygulamayı açın ve **Google hesabınızla** giriş yaparak devam edin.
+          EOF
 
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v6
         with:
-          name: rain-cube-apk
-          path: dist/RainCube-android.apk
+          name: rain-cube-${{ steps.version.outputs.version_tag }}
+          path: dist/RainCube-${{ steps.version.outputs.version_tag }}.apk
           if-no-files-found: error
           retention-days: 30
 
-      - name: Publish direct APK download on GitHub Releases (latest)
+      - name: Publish versioned Release announcement on GitHub Releases
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION_TAG: ${{ steps.version.outputs.version_tag }}
         run: |
-          if gh release view latest >/dev/null 2>&1; then
-            gh release upload latest dist/RainCube-android.apk --clobber
+          APK_FILE="dist/RainCube-${VERSION_TAG}.apk"
+          if gh release view "$VERSION_TAG" >/dev/null 2>&1; then
+            gh release upload "$VERSION_TAG" "$APK_FILE" --clobber
+            gh release edit "$VERSION_TAG" \
+              --title "Rain Cube ${VERSION_TAG}" \
+              --notes-file dist/release_notes.md \
+              --latest
           else
-            gh release create latest dist/RainCube-android.apk \
-              --title "Rain Cube — Son Sürüm APK" \
-              --notes "Rain Cube Android uygulamasının otomatik derlenmiş en güncel APK dosyası. Doğrudan RainCube-android.apk dosyasını indirip Android cihazınıza kurabilirsiniz." \
-              --prerelease
+            gh release create "$VERSION_TAG" "$APK_FILE" \
+              --target "${GITHUB_SHA}" \
+              --title "Rain Cube ${VERSION_TAG}" \
+              --notes-file dist/release_notes.md \
+              --latest
           fi
 
       - name: Upload test reports on failure

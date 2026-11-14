@@ -7,11 +7,15 @@
     <string name="auth_signing_in">Giriş yapılıyor…</string>
     <string name="auth_cancelled_message">Giriş iptal edildi. Devam etmek için bir Google hesabı seçin.</string>
     <string name="auth_no_credential_message">Bu cihazda kullanılabilir Google hesabı bulunamadı. Lütfen cihaz ayarlarından bir Google hesabı ekleyin.</string>
-    <string name="auth_config_missing">Giriş hizmeti şu anda başlatılamadı. Lütfen daha sonra tekrar deneyin.</string>
+    <string name="auth_config_missing">Giriş servisi bu derlemede henüz yapılandırılmamış.</string>
+    <string name="auth_play_services_error">Bu cihazda Google Play Hizmetleri güncel değil veya hesap seçici başlatılamadı.</string>
+    <string name="auth_sha_mismatch_message">Uygulama imzası Google giriş yapılandırmasıyla eşleşmiyor. Lütfen resmi sürümü kullanın.</string>
+    <string name="auth_generic_error">Google ile giriş yapılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.</string>
     <string name="hub_status_ready">Profil Hazır</string>
     <string name="hub_stats_title">Oyuncu Özeti</string>
     <string name="hub_upcoming_title">Oyun Modları Hazırlanıyor</string>
     <string name="hub_upcoming_desc">Hesabın doğrulandı ve profilin kaydedildi. Klasik Arena ve Haftalık Sıralama modları sonraki güncellemeyle eklenecek.</string>
     <string name="hub_upcoming_badge">Yakında</string>
+    <string name="btn_retry">Tekrar Dene</string>
     <string name="btn_sign_out">Çıkış Yap</string>
 </resources>
