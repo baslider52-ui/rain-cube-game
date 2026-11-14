@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Rain Cube</string>
+    <string name="auth_title">Rain Cube Altyapı Doğrulama</string>
+    <string name="auth_subtitle">Gerçek Firebase Authentication ve Cloud Firestore bağlantısını doğrulamak için Google hesabınızla giriş yapın.</string>
+    <string name="auth_sign_in_google">Google ile Giriş Yap</string>
+    <string name="auth_signing_in">Google hesabı doğrulanıyor…</string>
+    <string name="auth_cancelled_message">Google giriş ekranı iptal edildi. Devam etmek için bir hesap seçin.</string>
+    <string name="auth_no_credential_message">Bu cihazda veya emülatörde oturum açılabilir Google hesabı bulunamadı. Lütfen cihaz ayarlarından bir Google hesabı ekleyin.</string>
+    <string name="auth_config_missing">OAuth istemci kimliği (default_web_client_id) bulunamadı. Firebase yapılandırmasını kontrol edin.</string>
+    <string name="dashboard_title">Rain Cube Altyapı Paneli</string>
+    <string name="dashboard_subtitle">Oyun mekanikleri öncesi teknik bağlantı ve güvenlik doğrulaması</string>
+    <string name="btn_sign_out">Güvenli Çıkış</string>
+    <string name="btn_run_firestore_test">Firestore Yazma &amp; Okuma Testi</string>
+    <string name="btn_running_firestore_test">Firestore Doğrulanıyor…</string>
+    <string name="btn_log_analytics_test">Analytics Olayı Gönder</string>
+    <string name="label_uid">UID</string>
+    <string name="label_status_verified">Doğrulandı</string>
+    <string name="label_status_pending">Beklemede</string>
+    <string name="label_status_error">Hata</string>
+</resources>

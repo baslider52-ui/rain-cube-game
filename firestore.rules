@@ -1,0 +1,153 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Deny all reads and writes by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Shared Primitive Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // Entity Validation Helpers
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             (!('email' in data) || data.email == null || (data.email is string && data.email.size() <= 120)) &&
+             (!('preferredLocale' in data) || data.preferredLocale == null || (data.preferredLocale is string && data.preferredLocale.size() >= 2 && data.preferredLocale.size() <= 16)) &&
+             data.connectionStatus in ['verified', 'pending'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt) &&
+             isValidTimestamp(data.lastLoginAt);
+    }
+
+    function isValidConnectivityCheck(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.note is string && data.note.size() >= 1 && data.note.size() <= 120 &&
+             data.platform is string && data.platform.size() >= 1 && data.platform.size() <= 30 &&
+             data.appVersion is string && data.appVersion.size() >= 1 && data.appVersion.size() <= 30 &&
+             isValidTimestamp(data.checkedAt);
+    }
+
+    function isValidMatchRecord(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.mode is string && data.mode.size() >= 1 && data.mode.size() <= 32 &&
+             data.score is int && data.score >= 0 && data.score <= 100000000 &&
+             data.xpEarned is int && data.xpEarned == 0 &&
+             data.durationMs is int && data.durationMs >= 0 && data.durationMs <= 86400000 &&
+             data.status == 'pending_verification' &&
+             data.clientVersion is string && data.clientVersion.size() >= 1 && data.clientVersion.size() <= 32 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    // 1. User Profiles (PII isolated strictly to owner)
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && isOwner(userId);
+      allow list: if false;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isOwner(userId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'connectionStatus', 'createdAt', 'updatedAt', 'lastLoginAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'photoUrl', 'email', 'preferredLocale', 'connectionStatus', 'createdAt', 'updatedAt', 'lastLoginAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isOwner(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoUrl', 'email', 'preferredLocale', 'connectionStatus', 'updatedAt', 'lastLoginAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && isOwner(userId);
+
+      // 2. Connectivity Verification Subcollection (Owner read/write for real Firestore check)
+      match /diagnostics/{checkId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(checkId) && isOwner(userId);
+        allow list: if isSignedIn() && isValidId(userId) && isOwner(userId);
+
+        allow create: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(checkId) &&
+                         isOwner(userId) &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().keys().hasAll(['userId', 'note', 'platform', 'appVersion', 'checkedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'note', 'platform', 'appVersion', 'checkedAt']) &&
+                         isValidConnectivityCheck(incoming());
+
+        allow update: if isSignedIn() &&
+                         isValidId(userId) &&
+                         isValidId(checkId) &&
+                         isOwner(userId) &&
+                         isValidConnectivityCheck(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['note', 'platform', 'appVersion', 'checkedAt']);
+
+        allow delete: if isSignedIn() && isValidId(userId) && isValidId(checkId) && isOwner(userId);
+      }
+
+      // 3. Player Stats (Server-Authoritative: Owner read-only, written only by Cloud Functions)
+      match /stats/{statDocId} {
+        allow get: if isSignedIn() && isValidId(userId) && isValidId(statDocId) && isOwner(userId);
+        allow list: if isSignedIn() && isValidId(userId) && isOwner(userId);
+        allow create, update, delete: if false;
+      }
+    }
+
+    // 4. Global Leaderboard (Server-Authoritative: Signed-in public read-only, written by Cloud Functions)
+    match /leaderboard_global/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && existing().isPublic == true;
+      allow list: if isSignedIn() && existing().isPublic == true;
+      allow create, update, delete: if false;
+    }
+
+    // 5. Weekly Leaderboard (Server-Authoritative: Signed-in public read-only, written by Cloud Functions)
+    match /leaderboard_weekly/{weekId}/entries/{userId} {
+      allow get: if isSignedIn() && isValidId(weekId) && isValidId(userId) && existing().isPublic == true;
+      allow list: if isSignedIn() && isValidId(weekId) && existing().isPublic == true;
+      allow create, update, delete: if false;
+    }
+
+    // 6. Match Records (Client submits pending_verification with xpEarned == 0; immutable afterwards, verified by Cloud Functions)
+    match /match_records/{matchId} {
+      allow get: if isSignedIn() && isValidId(matchId) && existing().userId == request.auth.uid;
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'mode', 'score', 'xpEarned', 'durationMs', 'status', 'clientVersion', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'mode', 'score', 'xpEarned', 'durationMs', 'status', 'clientVersion', 'createdAt']) &&
+                       isValidMatchRecord(incoming());
+
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Rain Cube",
+  "description": "Rain Cube mobile game technical infrastructure with Firebase Auth, Firestore, Analytics, and CI/CD setup.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

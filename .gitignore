@@ -1,0 +1,36 @@
+# Gradle & Kotlin
+*.iml
+.gradle/
+.kotlin/
+/build/
+app/build/
+.build-outputs/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# IDE
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+
+# Local & Secret Configuration (NEVER commit to public repos)
+/local.properties
+local.properties
+.env
+*.keystore
+*.jks
+debug.keystore
+debug.keystore.base64
+app/google-services.json
+app/src/main/res/values/firebase_applet_config.xml
+
+# Ephemeral Firebase & Test Logs
+*-debug.log
+firestore-debug.log
+firebase-debug.log
+ui-debug.log

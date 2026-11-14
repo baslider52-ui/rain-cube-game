@@ -1,0 +1,339 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated player profile stored in Firestore under /users/{userId}.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Authentication UID matching the document ID."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Player display name sourced from Google Sign-In or profile settings."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional profile avatar URL from Google account."
+        },
+        "email": {
+          "type": "string",
+          "description": "Private player email address visible only to the owner."
+        },
+        "preferredLocale": {
+          "type": "string",
+          "description": "Optional BCP-47 locale tag."
+        },
+        "connectionStatus": {
+          "type": "string",
+          "enum": ["verified", "pending"],
+          "description": "Infrastructure verification status."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp set via FieldValue.serverTimestamp() at creation."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp updated via FieldValue.serverTimestamp()."
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest authenticated session."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "connectionStatus",
+        "createdAt",
+        "updatedAt",
+        "lastLoginAt"
+      ]
+    },
+    "ConnectivityCheck": {
+      "title": "ConnectivityCheck",
+      "description": "Real-time Firestore read/write verification record under /users/{userId}/diagnostics/{checkId}.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "note": {
+          "type": "string",
+          "description": "Diagnostic verification message."
+        },
+        "platform": {
+          "type": "string",
+          "description": "Client platform identifier (e.g. Android)."
+        },
+        "appVersion": {
+          "type": "string",
+          "description": "App version name at verification time."
+        },
+        "checkedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "note",
+        "platform",
+        "appVersion",
+        "checkedAt"
+      ]
+    },
+    "PlayerStats": {
+      "title": "PlayerStats",
+      "description": "Server-authoritative player progression stats under /users/{userId}/stats/{statDocId}. Written only by Cloud Functions.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID."
+        },
+        "xp": {
+          "type": "integer",
+          "description": "Server-verified total XP."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Server-calculated player level."
+        },
+        "totalScore": {
+          "type": "integer",
+          "description": "Cumulative verified score."
+        },
+        "bestScore": {
+          "type": "integer",
+          "description": "Highest verified run score."
+        },
+        "matchesPlayed": {
+          "type": "integer",
+          "description": "Total verified matches played."
+        },
+        "wins": {
+          "type": "integer",
+          "description": "Total verified wins."
+        },
+        "serverVerified": {
+          "type": "boolean",
+          "description": "True when maintained by trusted Cloud Functions."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "xp",
+        "level",
+        "totalScore",
+        "bestScore",
+        "matchesPlayed",
+        "wins",
+        "serverVerified",
+        "updatedAt"
+      ]
+    },
+    "GlobalLeaderboardEntry": {
+      "title": "GlobalLeaderboardEntry",
+      "description": "Server-maintained global leaderboard entry under /leaderboard_global/{userId}.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Player UID."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public player display name."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional public avatar URL."
+        },
+        "bestScore": {
+          "type": "integer",
+          "description": "Server-verified best score."
+        },
+        "xp": {
+          "type": "integer",
+          "description": "Server-verified XP."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Server-verified level."
+        },
+        "rank": {
+          "type": "integer",
+          "description": "Calculated global rank."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Controls public leaderboard visibility."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "bestScore",
+        "xp",
+        "level",
+        "rank",
+        "isPublic",
+        "updatedAt"
+      ]
+    },
+    "WeeklyLeaderboardEntry": {
+      "title": "WeeklyLeaderboardEntry",
+      "description": "Server-maintained weekly leaderboard entry under /leaderboard_weekly/{weekId}/entries/{userId}.",
+      "type": "object",
+      "properties": {
+        "weekId": {
+          "type": "string",
+          "description": "ISO week identifier (e.g. 2026-W46)."
+        },
+        "userId": {
+          "type": "string",
+          "description": "Player UID."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public player display name."
+        },
+        "photoUrl": {
+          "type": "string",
+          "description": "Optional public avatar URL."
+        },
+        "weeklyScore": {
+          "type": "integer",
+          "description": "Server-verified weekly score."
+        },
+        "matchesCount": {
+          "type": "integer",
+          "description": "Verified matches in this week."
+        },
+        "rank": {
+          "type": "integer",
+          "description": "Calculated weekly rank."
+        },
+        "isPublic": {
+          "type": "boolean",
+          "description": "Controls public leaderboard visibility."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp via FieldValue.serverTimestamp()."
+        }
+      },
+      "required": [
+        "weekId",
+        "userId",
+        "displayName",
+        "weeklyScore",
+        "matchesCount",
+        "rank",
+        "isPublic",
+        "updatedAt"
+      ]
+    },
+    "MatchRecord": {
+      "title": "MatchRecord",
+      "description": "Match submission and server verification record under /match_records/{matchId}.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Submitting player UID."
+        },
+        "mode": {
+          "type": "string",
+          "description": "Game mode key."
+        },
+        "score": {
+          "type": "integer",
+          "description": "Submitted run score."
+        },
+        "xpEarned": {
+          "type": "integer",
+          "description": "Must be 0 on client submission; computed by Cloud Functions on verification."
+        },
+        "durationMs": {
+          "type": "integer",
+          "description": "Run duration in milliseconds."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending_verification", "verified", "rejected"],
+          "description": "Server verification lifecycle status."
+        },
+        "clientVersion": {
+          "type": "string",
+          "description": "Client build version submitting the match."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp via FieldValue.serverTimestamp()."
+        },
+        "verifiedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp written by Cloud Functions upon verification."
+        }
+      },
+      "required": [
+        "userId",
+        "mode",
+        "score",
+        "xpEarned",
+        "durationMs",
+        "status",
+        "clientVersion",
+        "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private authenticated user profiles."
+    },
+    "/users/{userId}/diagnostics/{checkId}": {
+      "schema": { "$ref": "#/entities/ConnectivityCheck" },
+      "description": "Client write/read infrastructure verification records."
+    },
+    "/users/{userId}/stats/{statDocId}": {
+      "schema": { "$ref": "#/entities/PlayerStats" },
+      "description": "Server-authoritative player stats (read-only for owner, written by Cloud Functions)."
+    },
+    "/leaderboard_global/{userId}": {
+      "schema": { "$ref": "#/entities/GlobalLeaderboardEntry" },
+      "description": "Server-authoritative global leaderboard entries."
+    },
+    "/leaderboard_weekly/{weekId}/entries/{userId}": {
+      "schema": { "$ref": "#/entities/WeeklyLeaderboardEntry" },
+      "description": "Server-authoritative weekly leaderboard entries."
+    },
+    "/match_records/{matchId}": {
+      "schema": { "$ref": "#/entities/MatchRecord" },
+      "description": "Match records submitted in pending_verification state and verified server-side."
+    }
+  }
+}
