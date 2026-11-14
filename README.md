@@ -1,47 +1,53 @@
-# Rain Cube
-
-Rain Cube Android mobil oyunu projesi.
-
-## 📱 APK İndir (Android)
-
-Kullanıcılar en güncel APK dosyasını doğrudan GitHub üzerinden indirebilir:
-
-1. Repository sayfasının sağ tarafındaki **Releases** bölümüne girin (veya `https://github.com/<KULLANICI_ADINIZ>/rain-cube-game/releases/latest` adresini açın).
-2. **`RainCube-android.apk`** dosyasına dokunarak indirin.
-3. Android cihazınızda dosyayı açıp kurulumu tamamlayın.
-
-> `main` dalına her yeni kod gönderildiğinde `.github/workflows/android-ci.yml` otomatik olarak güncel `RainCube-android.apk` dosyasını derler ve **Releases** sayfasında yayınlar.
+<div align="center">
+  <img src="app/src/main/res/drawable/ic_rain_cube_brand.png" alt="Rain Cube İkonu" width="120" />
+  <h1>Rain Cube</h1>
+  <p><strong>Neon arenada reflekslerini konuştur, iz bırak ve taç için yarış!</strong></p>
+  <p>Android için geliştirilen hızlı, dikey ekran odaklı modern mobil arcade oyunu.</p>
+</div>
 
 ---
 
-## 🏗️ Teknik Mimari
+## 🎮 Rain Cube Nedir?
 
-- **Platform:** Android (Kotlin, Jetpack Compose, Material 3)
-- **Ekran Yönü:** Yalnızca Dikey (`portrait`)
-- **Paket Adı (`applicationId`):** `com.raincube.game` (`app/build.gradle.kts` içinden değiştirilebilir)
-- **Kimlik Doğrulama:** Google Sign-In (`Jetpack CredentialManager` + Firebase Auth)
-- **Veritabanı & Analitik:** Cloud Firestore + Firebase Analytics + Cloud Functions uyumlu güvenlik kuralları (`firestore.rules`)
+**Rain Cube**, akıcı kontrolleri ve neon görsel atmosferiyle kısa sürede öğrenilip ustalaşılması zor bir 2D arcade deneyimi sunmak üzere tasarlanan bir Android mobil oyunudur.
 
-```text
-app/src/main/java/com/example/
-├── auth/                  # Google Sign-In & oturum akışı
-├── core/                  # Yapılandırma, Firebase sağlayıcıları ve hata günlükçüsü
-├── data/                  # Modeller ve Firestore repository katmanı
-├── engine/                # 2D gerçek zamanlı oyun döngüsü teknik sözleşmeleri
-├── ui/                    # Giriş ekranı, Oyuncu Merkezi ve tema
-└── MainActivity.kt        # Edge-to-edge kök bileşeni
-```
+Oyuncular kendi küplerini yöneterek arenada hayatta kalmaya çalışır, skor ve XP toplayarak seviyelerini yükseltir ve haftalık ile genel sıralamalarda zirveye tırmanır.
 
 ---
 
-## 🚀 Google AI Studio Üzerinden GitHub'a Gönderme & Secrets
+## 📱 Nasıl İndirilir ve Kurulur? (Android APK)
 
-Hassas dosyalar (`app/google-services.json`, `firebase_applet_config.xml`, `debug.keystore`, `.env`, `*.jks`) `.gitignore` ile korunmaktadır ve herkese açık repository'ye gönderilmez.
+Rain Cube'ün en güncel Android sürümünü doğrudan GitHub üzerinden indirip telefonunuza kurabilirsiniz:
 
-1. Google AI Studio üst menüsündeki **GitHub'a Gönder (Push to GitHub)** seçeneği ile projeyi `rain-cube-game` deponuza gönderin.
-2. GitHub'dan indirilen APK'nın gerçek **Google ile Giriş** ve **Firestore** bağlantısıyla çalışması için GitHub deponuzda **Settings → Secrets and variables → Actions** bölümüne şu 3 secret'ı ekleyin:
-   - `GOOGLE_SERVICES_JSON_BASE64`: `base64 -w0 app/google-services.json` çıktısı
-   - `FIREBASE_APPLET_CONFIG_XML_BASE64`: `base64 -w0 app/src/main/res/values/firebase_applet_config.xml` çıktısı
-   - `DEBUG_KEYSTORE_BASE64`: `debug.keystore.base64` dosyasının içeriği (SHA-1 parmak izinin Firebase ile eşleşmesi için)
-3. (İsteğe bağlı) İmzalı sürüm yayınlamak için (`v1.0.0` etiketi ile `release-apk.yml`):
-   - `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`
+1. Bu sayfanın sağ tarafındaki **Releases** bölümüne tıklayın.
+2. En üstteki sürümün altından **`RainCube-android.apk`** dosyasını indirin.
+3. İndirilen APK dosyasına dokunun ve Android cihazınızda kurulumu onaylayın.
+4. Uygulamayı açıp **Google hesabınızla giriş yaparak** oyuncu profilinizi oluşturun.
+
+---
+
+## ✨ Özellikler
+
+- **Tek Elle Rahat Kontrol:** Tamamen dikey (`Portrait`) ekran kullanımına uygun, akıcı mobil deneyim.
+- **Güvenli Oyuncu Profili:** Google hesabınızla tek dokunuşta giriş yapın; profiliniz, yüksek skorlarınız ve istatistikleriniz bulutta güvende kalsın.
+- **Seviye ve İlerleme Sistemi:** Oynadığınız maçlardan kazandığınız puanlarla seviyenizi yükseltin.
+- **Genel & Haftalık Sıralamalar:** Diğer oyuncularla rekabet edin ve haftalık liderlik tablosunda yerinizi alın.
+
+---
+
+## 🗺️ Geliştirme Yol Haritası
+
+Rain Cube adım adım geliştirilmektedir:
+
+- [x] Uygulama tasarımı, özel ikon ve oyuncu girişi
+- [x] Oyuncu profili ve bulut kayıt altyapısı
+- [x] GitHub üzerinden otomatik APK dağıtımı
+- [ ] Ana oyun arenası ve küp kontrol mekanikleri
+- [ ] İz efekti, rakipler ve XP sistemi
+- [ ] Genel ve haftalık sıralama ekranları
+
+---
+
+## 💬 Geri Bildirim
+
+Öneri ve hata bildirimleri için GitHub **Issues** sekmesini kullanabilirsiniz.

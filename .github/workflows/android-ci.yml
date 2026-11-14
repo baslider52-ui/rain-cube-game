@@ -13,17 +13,17 @@ permissions:
 jobs:
   build-apk:
     name: Test & Build Rain Cube APK
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+      - name: Set up JDK 21
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Accept Android SDK licenses
         run: |
@@ -32,7 +32,7 @@ jobs:
           fi
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.3.1'
 
@@ -46,7 +46,7 @@ jobs:
             echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
             echo "Decoded app/google-services.json from GitHub Secret."
           else
-            echo "::warning::GOOGLE_SERVICES_JSON_BASE64 secret not set; building with MissingGoogleServicesStrategy.WARN"
+            echo "Info: GOOGLE_SERVICES_JSON_BASE64 not set; building with MissingGoogleServicesStrategy.WARN."
           fi
 
           if [ -n "$FIREBASE_APPLET_CONFIG_XML_BASE64" ]; then
@@ -59,7 +59,7 @@ jobs:
               <string name="firestore_database_id" translatable="false">ci-placeholder-db</string>
           </resources>
           EOF
-            echo "::warning::FIREBASE_APPLET_CONFIG_XML_BASE64 secret not set; using placeholder firestore_database_id for CI build."
+            echo "Info: FIREBASE_APPLET_CONFIG_XML_BASE64 not set; using placeholder firestore_database_id for CI build."
           fi
 
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
@@ -69,10 +69,10 @@ jobs:
             keytool -genkeypair -v -keystore debug.keystore -storepass android \
               -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
               -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            echo "::warning::DEBUG_KEYSTORE_BASE64 not set; generated ephemeral debug.keystore for CI build."
+            echo "Info: Generated ephemeral debug.keystore for CI build."
           fi
 
-      - name: Run unit tests (non-emulator)
+      - name: Run unit tests
         run: gradle :app:testDebugUnitTest --tests 'com.example.ExampleUnitTest' --tests 'com.example.ExampleRobolectricTest' --stacktrace
 
       - name: Build Debug APK
@@ -84,7 +84,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk dist/RainCube-android.apk
 
       - name: Upload APK as workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: rain-cube-apk
           path: dist/RainCube-android.apk
@@ -93,20 +93,21 @@ jobs:
 
       - name: Publish direct APK download on GitHub Releases (latest)
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: Rain Cube — Son Sürüm APK
-          body: |
-            Rain Cube Android uygulamasının otomatik derlenmiş en güncel APK dosyası.
-            Doğrudan **RainCube-android.apk** dosyasını indirip Android cihazınıza kurabilirsiniz.
-          prerelease: true
-          make_latest: true
-          files: dist/RainCube-android.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view latest >/dev/null 2>&1; then
+            gh release upload latest dist/RainCube-android.apk --clobber
+          else
+            gh release create latest dist/RainCube-android.apk \
+              --title "Rain Cube — Son Sürüm APK" \
+              --notes "Rain Cube Android uygulamasının otomatik derlenmiş en güncel APK dosyası. Doğrudan RainCube-android.apk dosyasını indirip Android cihazınıza kurabilirsiniz." \
+              --prerelease
+          fi
 
       - name: Upload test reports on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-ci-failure-reports
           path: |
