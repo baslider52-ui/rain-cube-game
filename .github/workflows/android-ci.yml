@@ -14,6 +14,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   build-apk:
@@ -42,6 +43,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: '9.3.1'
+
+      - name: Restore consistent CI signing keystore
+        uses: actions/cache@v6
+        with:
+          path: debug.keystore
+          key: rain-cube-signing-keystore-v1
 
       - name: Determine release version
         id: version
@@ -89,7 +96,7 @@ jobs:
           echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
           echo "Resolved release version: ${VERSION_TAG} (versionCode=${VERSION_CODE})"
 
-      - name: Prepare Firebase and signing configuration
+      - name: Prepare Firebase and consistent signing keystore
         env:
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
@@ -125,14 +132,15 @@ jobs:
 
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
             echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
-            echo "Decoded debug.keystore from GitHub Secret."
+            echo "Loaded permanent debug.keystore from GitHub Secret."
           elif [ ! -f debug.keystore ]; then
-            keytool -genkeypair -v -keystore debug.keystore -storepass android \
+            keytool -genkeypair -keystore debug.keystore -storepass android \
               -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
-              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-            echo "Info: Generated ephemeral debug.keystore for CI build."
+              -validity 10000 -dname "CN=Rain Cube,O=RainCube,C=TR"
+            echo "Initialized shared CI debug.keystore for consistent APK signing."
+          else
+            echo "Reusing cached debug.keystore for identical APK signing identity."
           fi
-          keytool -list -v -keystore debug.keystore -storepass android -alias androiddebugkey | grep -E "SHA1:|SHA256:" || true
 
       - name: Run unit tests
         run: |
@@ -178,7 +186,7 @@ jobs:
           **Sürüm:** \`${VERSION_NAME}\` (Derleme \`${VERSION_CODE}\`)
           **Yayın Tarihi:** ${RELEASE_DATE}
 
-          ### 📰 Bu Sürümde Neler Var?
+          ### 📰 Bu Sürümdeki Yenilikler
           ${CHANGES}
 
           ---
@@ -189,15 +197,26 @@ jobs:
           3. Uygulamayı açın ve **Google hesabınızla** giriş yaparak devam edin.
           EOF
 
-      - name: Upload APK as workflow artifact
+      - name: Remove old workflow APK artifacts
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          OLD_IDS="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" --jq '.artifacts[] | select(.name | startswith("rain-cube-")) | .id' 2>/dev/null || true)"
+          for aid in $OLD_IDS; do
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${aid}" >/dev/null 2>&1 || true
+          done
+
+      - name: Upload newest APK artifact
         uses: actions/upload-artifact@v6
         with:
-          name: rain-cube-${{ steps.version.outputs.version_tag }}
+          name: rain-cube-latest-apk
           path: dist/RainCube-${{ steps.version.outputs.version_tag }}.apk
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7
+          overwrite: true
 
-      - name: Publish versioned Release announcement on GitHub Releases
+      - name: Publish newest Release and delete older GitHub Releases
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         env:
           GH_TOKEN: ${{ github.token }}
@@ -217,6 +236,14 @@ jobs:
               --notes-file dist/release_notes.md \
               --latest
           fi
+
+          OLD_RELEASES="$(gh release list --limit 200 --json tagName --jq '.[].tagName' 2>/dev/null || true)"
+          while IFS= read -r old_tag; do
+            [ -z "$old_tag" ] && continue
+            [ "$old_tag" = "$VERSION_TAG" ] && continue
+            echo "Deleting previous release: $old_tag"
+            gh release delete "$old_tag" --yes || true
+          done <<< "$OLD_RELEASES"
 
       - name: Upload test reports on failure
         if: failure()
