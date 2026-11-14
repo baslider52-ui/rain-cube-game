@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
+import androidx.credentials.Credential
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
@@ -29,6 +30,7 @@ import com.google.firebase.auth.auth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
@@ -46,6 +48,7 @@ object AuthSessionManager {
 
     private const val TAG = "RainCubeAuth"
     private val signOutScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var activeSilentJob: Job? = null
 
     private tailrec fun Context.findActivity(): Activity? = when (this) {
         is Activity -> this
@@ -55,11 +58,17 @@ object AuthSessionManager {
 
     fun isFirebaseInitialized(context: Context): Boolean {
         return runCatching {
-            FirebaseApp.getApps(context.applicationContext).isNotEmpty()
+            val appContext = context.applicationContext
+            if (FirebaseApp.getApps(appContext).isNotEmpty()) {
+                true
+            } else {
+                FirebaseApp.initializeApp(appContext) != null
+            }
         }.getOrDefault(false)
     }
 
     fun authStateFlow(auth: FirebaseAuth = Firebase.auth): Flow<FirebaseUser?> = callbackFlow {
+        trySend(auth.currentUser)
         val listener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             trySend(firebaseAuth.currentUser)
         }
@@ -79,15 +88,20 @@ object AuthSessionManager {
 
     @SuppressLint("DiscouragedApi")
     fun resolveWebClientId(context: Context): String? {
-        val resId = context.resources.getIdentifier(
-            "default_web_client_id",
-            "string",
-            context.packageName
-        )
-        if (resId == 0) return null
-        return runCatching { context.getString(resId) }
-            .getOrNull()
-            ?.takeIf { it.isNotBlank() }
+        val candidatePackages = listOf(
+            context.packageName,
+            context.applicationInfo?.packageName,
+            "com.example"
+        ).filterNotNull().distinct()
+
+        for (pkg in candidatePackages) {
+            val resId = context.resources.getIdentifier("default_web_client_id", "string", pkg)
+            if (resId != 0) {
+                val value = runCatching { context.getString(resId) }.getOrNull()
+                if (!value.isNullOrBlank()) return value
+            }
+        }
+        return null
     }
 
     fun attemptSilentSignIn(
@@ -125,22 +139,13 @@ object AuthSessionManager {
             .addCredentialOption(googleIdOption)
             .build()
 
-        scope.launch {
+        activeSilentJob?.cancel()
+        activeSilentJob = scope.launch {
             try {
                 val result = credentialManager.getCredential(hostContext, request)
-                val credential = result.credential
-                if (credential is CustomCredential &&
-                    credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                ) {
-                    val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
-                    val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                    val authResult = Firebase.auth.signInWithCredential(authCredential).await()
-                    val firebaseUser = authResult.user
-                    if (firebaseUser != null) {
-                        onAuthSuccess(firebaseUser.toAuthenticatedUser())
-                    } else {
-                        onUnauthenticated()
-                    }
+                val firebaseUser = exchangeCredentialWithFirebase(result.credential)
+                if (firebaseUser != null) {
+                    onAuthSuccess(firebaseUser.toAuthenticatedUser())
                 } else {
                     onUnauthenticated()
                 }
@@ -179,36 +184,57 @@ object AuthSessionManager {
 
         val credentialManager = CredentialManager.create(activityContext)
         val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
-        val request = GetCredentialRequest.Builder()
+        val primaryRequest = GetCredentialRequest.Builder()
             .addCredentialOption(signInOption)
             .build()
 
         scope.launch {
+            // Devam eden sessiz giriş isteği varsa çakışmayı önlemek için iptal et ve bekle
+            activeSilentJob?.let { job ->
+                job.cancel()
+                runCatching { job.join() }
+            }
+
             try {
-                val result = credentialManager.getCredential(activityContext, request)
-                val credential = result.credential
-                if (credential is CustomCredential &&
-                    credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                ) {
-                    val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
-                    val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
-                    val authResult = Firebase.auth.signInWithCredential(authCredential).await()
-                    val firebaseUser = authResult.user
-                    if (firebaseUser != null) {
-                        onAuthSuccess(firebaseUser.toAuthenticatedUser())
-                    } else {
-                        onAuthError("Oturum oluşturulamadı. Lütfen tekrar deneyin.")
-                    }
+                val result = try {
+                    credentialManager.getCredential(activityContext, primaryRequest)
+                } catch (e: NoCredentialException) {
+                    Log.w(TAG, "Primary SIWG returned NoCredentialException, trying GoogleIdOption fallback", e)
+                    val fallbackOption = GetGoogleIdOption.Builder()
+                        .setFilterByAuthorizedAccounts(false)
+                        .setServerClientId(clientId)
+                        .setAutoSelectEnabled(false)
+                        .build()
+                    val fallbackRequest = GetCredentialRequest.Builder()
+                        .addCredentialOption(fallbackOption)
+                        .build()
+                    credentialManager.getCredential(activityContext, fallbackRequest)
+                } catch (e: GetCredentialUnsupportedException) {
+                    Log.w(TAG, "Primary SIWG unsupported, trying GoogleIdOption fallback", e)
+                    val fallbackOption = GetGoogleIdOption.Builder()
+                        .setFilterByAuthorizedAccounts(false)
+                        .setServerClientId(clientId)
+                        .setAutoSelectEnabled(false)
+                        .build()
+                    val fallbackRequest = GetCredentialRequest.Builder()
+                        .addCredentialOption(fallbackOption)
+                        .build()
+                    credentialManager.getCredential(activityContext, fallbackRequest)
+                }
+
+                val firebaseUser = exchangeCredentialWithFirebase(result.credential)
+                if (firebaseUser != null) {
+                    onAuthSuccess(firebaseUser.toAuthenticatedUser())
                 } else {
-                    onAuthError("Beklenmeyen kimlik bilgisi türü alındı.")
+                    onAuthError("Oturum oluşturulamadı. Lütfen tekrar deneyin.")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: GetCredentialCancellationException) {
-                Log.w(TAG, "Google Sign-In cancelled: ${e.message}")
+                Log.w(TAG, "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
                 onAuthCancelled(context.getString(R.string.auth_cancelled_message))
             } catch (e: NoCredentialException) {
-                Log.w(TAG, "No Google credential available: ${e.message}")
+                Log.w(TAG, "No Google credential available on device: ${e.message}", e)
                 onAuthError(context.getString(R.string.auth_no_credential_message))
             } catch (e: GetCredentialProviderConfigurationException) {
                 Log.e(TAG, "Credential provider configuration error: ${e.errorMessage}", e)
@@ -227,6 +253,18 @@ object AuthSessionManager {
                 onAuthError(mapCredentialErrorMessage(context, e.localizedMessage))
             }
         }
+    }
+
+    private suspend fun exchangeCredentialWithFirebase(credential: Credential): FirebaseUser? {
+        if (credential is CustomCredential &&
+            credential.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
+        ) {
+            val googleIdToken = GoogleIdTokenCredential.createFrom(credential.data).idToken
+            val authCredential = GoogleAuthProvider.getCredential(googleIdToken, null)
+            val authResult = Firebase.auth.signInWithCredential(authCredential).await()
+            return authResult.user
+        }
+        return null
     }
 
     private fun mapCredentialErrorMessage(context: Context, rawMessage: String?): String {
