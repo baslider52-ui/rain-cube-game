@@ -34,26 +34,14 @@ app/src/main/java/com/example/
 
 ---
 
-## 🚀 GitHub Repository ve Otomatik APK Kurulumu
+## 🚀 Google AI Studio Üzerinden GitHub'a Gönderme & Secrets
 
-Hassas dosyalar (`app/google-services.json`, `firebase_applet_config.xml`, `.env`, `*.keystore`, `*.jks`) `.gitignore` ile korunmaktadır.
+Hassas dosyalar (`app/google-services.json`, `firebase_applet_config.xml`, `debug.keystore`, `.env`, `*.jks`) `.gitignore` ile korunmaktadır ve herkese açık repository'ye gönderilmez.
 
-### 1. Kodu GitHub'a Gönderme (`rain-cube-game`)
-
-```bash
-git add .
-git commit -m "chore: setup Rain Cube app, icon, Firebase and GitHub APK release"
-git branch -M main
-git remote add origin https://github.com/<KULLANICI_ADINIZ>/rain-cube-game.git
-git push -u origin main
-```
-
-### 2. GitHub Secrets Ayarları (APK'nın Google ile Giriş Çalışması İçin)
-
-GitHub repository ayarlarından **Settings → Secrets and variables → Actions** bölümüne şu iki secret'ı ekleyin:
-
-- `GOOGLE_SERVICES_JSON_BASE64`: `base64 -w0 app/google-services.json` çıktısı
-- `FIREBASE_APPLET_CONFIG_XML_BASE64`: `base64 -w0 app/src/main/res/values/firebase_applet_config.xml` çıktısı
-
-İmzalı sürüm yayınlamak için (`v1.0.0` etiketi ile `release-apk.yml`):
-- `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`
+1. Google AI Studio üst menüsündeki **GitHub'a Gönder (Push to GitHub)** seçeneği ile projeyi `rain-cube-game` deponuza gönderin.
+2. GitHub'dan indirilen APK'nın gerçek **Google ile Giriş** ve **Firestore** bağlantısıyla çalışması için GitHub deponuzda **Settings → Secrets and variables → Actions** bölümüne şu 3 secret'ı ekleyin:
+   - `GOOGLE_SERVICES_JSON_BASE64`: `base64 -w0 app/google-services.json` çıktısı
+   - `FIREBASE_APPLET_CONFIG_XML_BASE64`: `base64 -w0 app/src/main/res/values/firebase_applet_config.xml` çıktısı
+   - `DEBUG_KEYSTORE_BASE64`: `debug.keystore.base64` dosyasının içeriği (SHA-1 parmak izinin Firebase ile eşleşmesi için)
+3. (İsteğe bağlı) İmzalı sürüm yayınlamak için (`v1.0.0` etiketi ile `release-apk.yml`):
+   - `RELEASE_KEYSTORE_BASE64`, `STORE_PASSWORD`, `KEY_PASSWORD`

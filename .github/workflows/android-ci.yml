@@ -2,9 +2,9 @@ name: Android CI & GitHub APK Release
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -25,15 +25,22 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Accept Android SDK licenses
+        run: |
+          if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          fi
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      - name: Prepare Firebase configuration files
+      - name: Prepare Firebase and signing configuration
         env:
           GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
           FIREBASE_APPLET_CONFIG_XML_BASE64: ${{ secrets.FIREBASE_APPLET_CONFIG_XML_BASE64 }}
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
         run: |
           if [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
             echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
@@ -53,6 +60,16 @@ jobs:
           </resources>
           EOF
             echo "::warning::FIREBASE_APPLET_CONFIG_XML_BASE64 secret not set; using placeholder firestore_database_id for CI build."
+          fi
+
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 --decode > debug.keystore
+            echo "Decoded debug.keystore from GitHub Secret."
+          elif [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v -keystore debug.keystore -storepass android \
+              -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            echo "::warning::DEBUG_KEYSTORE_BASE64 not set; generated ephemeral debug.keystore for CI build."
           fi
 
       - name: Run unit tests (non-emulator)
@@ -75,13 +92,13 @@ jobs:
           retention-days: 30
 
       - name: Publish direct APK download on GitHub Releases (latest)
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: Rain Cube — Son Sürüm APK
           body: |
-            Rain Cube Android uygulamasının `main` dalından otomatik derlenmiş en güncel APK dosyası.
+            Rain Cube Android uygulamasının otomatik derlenmiş en güncel APK dosyası.
             Doğrudan **RainCube-android.apk** dosyasını indirip Android cihazınıza kurabilirsiniz.
           prerelease: true
           make_latest: true
