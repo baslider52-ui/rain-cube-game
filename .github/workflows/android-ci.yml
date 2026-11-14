@@ -1,4 +1,4 @@
-name: Android CI - Debug APK
+name: Android CI & GitHub APK Release
 
 on:
   push:
@@ -7,9 +7,12 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build-debug-apk:
-    name: Build & Verify Debug APK
+  build-apk:
+    name: Test & Build Rain Cube APK
     runs-on: ubuntu-latest
 
     steps:
@@ -58,13 +61,31 @@ jobs:
       - name: Build Debug APK
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Upload Debug APK artifact
+      - name: Prepare downloadable APK file
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/RainCube-android.apk
+
+      - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rain-cube-debug-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: rain-cube-apk
+          path: dist/RainCube-android.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Publish direct APK download on GitHub Releases (latest)
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Rain Cube — Son Sürüm APK
+          body: |
+            Rain Cube Android uygulamasının `main` dalından otomatik derlenmiş en güncel APK dosyası.
+            Doğrudan **RainCube-android.apk** dosyasını indirip Android cihazınıza kurabilirsiniz.
+          prerelease: true
+          make_latest: true
+          files: dist/RainCube-android.apk
 
       - name: Upload test reports on failure
         if: failure()
