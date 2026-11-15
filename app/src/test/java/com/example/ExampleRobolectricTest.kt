@@ -3,6 +3,9 @@ package com.example
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.auth.AuthSessionManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -31,5 +34,22 @@ class ExampleRobolectricTest {
             assertFalse(clientId.isNullOrBlank())
             assertTrue(AuthSessionManager.isFirebaseInitialized(context))
         }
+    }
+
+    @Test
+    fun `fresh install skips background silent sign-in to prevent Play Services cooldown`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        context.getSharedPreferences("rain_cube_auth_prefs", Context.MODE_PRIVATE).edit().clear().commit()
+        var unauthenticatedCalled = false
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
+        AuthSessionManager.attemptSilentSignIn(
+            context = context,
+            scope = scope,
+            onAuthSuccess = {},
+            onUnauthenticated = { unauthenticatedCalled = true }
+        )
+
+        assertTrue(unauthenticatedCalled)
     }
 }

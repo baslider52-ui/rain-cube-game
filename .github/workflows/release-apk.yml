@@ -51,16 +51,18 @@ jobs:
           if [ -n "$GOOGLE_SERVICES_JSON" ]; then
             printf '%s\n' "$GOOGLE_SERVICES_JSON" > app/google-services.json
           elif [ -n "$GOOGLE_SERVICES_JSON_BASE64" ]; then
-            echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > app/google-services.json
+            printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | tr -d '[:space:]' | base64 --decode > app/google-services.json
           else
             echo "::error::Missing GOOGLE_SERVICES_JSON or GOOGLE_SERVICES_JSON_BASE64 secret."
             exit 1
           fi
 
+          python3 -m json.tool app/google-services.json > /dev/null
+
           if [ -n "$FIREBASE_APPLET_CONFIG_XML" ]; then
             printf '%s\n' "$FIREBASE_APPLET_CONFIG_XML" > app/src/main/res/values/firebase_applet_config.xml
           elif [ -n "$FIREBASE_APPLET_CONFIG_XML_BASE64" ]; then
-            echo "$FIREBASE_APPLET_CONFIG_XML_BASE64" | base64 --decode > app/src/main/res/values/firebase_applet_config.xml
+            printf '%s' "$FIREBASE_APPLET_CONFIG_XML_BASE64" | tr -d '[:space:]' | base64 --decode > app/src/main/res/values/firebase_applet_config.xml
           else
             echo "::error::Missing FIREBASE_APPLET_CONFIG_XML or FIREBASE_APPLET_CONFIG_XML_BASE64 secret."
             exit 1
@@ -70,7 +72,7 @@ jobs:
             echo "::error::Missing RELEASE_KEYSTORE_BASE64 secret."
             exit 1
           fi
-          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > my-upload-key.jks
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 --decode > my-upload-key.jks
 
       - name: Build Release APK and AAB
         env:

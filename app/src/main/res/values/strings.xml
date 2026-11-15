@@ -10,6 +10,7 @@
     <string name="auth_config_missing">Giriş servisi bu derlemede henüz yapılandırılmamış.</string>
     <string name="auth_play_services_error">Bu cihazda Google Play Hizmetleri güncel değil veya hesap seçici başlatılamadı.</string>
     <string name="auth_sha_mismatch_message">Uygulama imzası Google giriş yapılandırmasıyla eşleşmiyor. Lütfen resmi veya AI Studio sürümünü kullanın.</string>
+    <string name="auth_rate_limited_message">Google Play Hizmetleri ardışık iptaller nedeniyle giriş penceresini geçici olarak duraklattı. Lütfen birkaç dakika bekleyip tekrar deneyin veya telefon Ayarlar &gt; Uygulamalar &gt; Google Play Hizmetleri önbelleğini temizleyin.</string>
     <string name="auth_generic_error">Google ile giriş yapılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.</string>
     <string name="hub_status_ready">Profil Hazır</string>
     <string name="hub_stats_title">Oyuncu Özeti</string>

@@ -33,7 +33,6 @@ import com.google.firebase.auth.auth
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.awaitClose
@@ -50,13 +49,31 @@ import kotlinx.coroutines.withContext
 object AuthSessionManager {
 
     private const val TAG = "RainCubeAuth"
+    private const val PREFS_NAME = "rain_cube_auth_prefs"
+    private const val KEY_HAS_SIGNED_IN = "has_completed_google_sign_in"
+
     private val signOutScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private var activeSilentJob: Job? = null
+    private var silentAttemptedInProcess = false
+    private var lastInteractiveAttemptFailed = false
 
     private tailrec fun Context.findActivity(): Activity? = when (this) {
         is Activity -> this
         is ContextWrapper -> baseContext.findActivity()
         else -> null
+    }
+
+    private fun hasCompletedSignInBefore(context: Context): Boolean {
+        return context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(KEY_HAS_SIGNED_IN, false)
+    }
+
+    private fun setCompletedSignInBefore(context: Context, value: Boolean) {
+        context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(KEY_HAS_SIGNED_IN, value)
+            .apply()
     }
 
     fun isFirebaseInitialized(context: Context): Boolean {
@@ -120,9 +137,19 @@ object AuthSessionManager {
 
         val currentUser = Firebase.auth.currentUser
         if (currentUser != null) {
+            setCompletedSignInBefore(context, true)
             onAuthSuccess(currentUser.toAuthenticatedUser())
             return
         }
+
+        // İlk kurulumda veya çıkış yapıldıktan sonra arka planda One Tap çağrısı yapıp
+        // Google Play Hizmetleri hız sınırına (Error 16) takılmamak için yalnızca
+        // daha önce oturum açmış kullanıcılarda ve süreç başına en fazla bir kez dene.
+        if (silentAttemptedInProcess || !hasCompletedSignInBefore(context)) {
+            onUnauthenticated()
+            return
+        }
+        silentAttemptedInProcess = true
 
         val clientId = resolveWebClientId(context)
         if (clientId == null) {
@@ -142,12 +169,12 @@ object AuthSessionManager {
             .addCredentialOption(googleIdOption)
             .build()
 
-        activeSilentJob?.cancel()
-        activeSilentJob = scope.launch {
+        scope.launch {
             try {
                 val result = credentialManager.getCredential(hostContext, request)
                 val firebaseUser = exchangeCredentialWithFirebase(result.credential)
                 if (firebaseUser != null) {
+                    setCompletedSignInBefore(context, true)
                     onAuthSuccess(firebaseUser.toAuthenticatedUser())
                 } else {
                     onUnauthenticated()
@@ -193,26 +220,15 @@ object AuthSessionManager {
             .build()
 
         scope.launch {
-            // Devam eden sessiz giriş isteği varsa çakışmayı önlemek için iptal et ve bekle
-            activeSilentJob?.let { job ->
-                job.cancel()
-                runCatching { job.join() }
+            if (lastInteractiveAttemptFailed) {
+                runCatching {
+                    credentialManager.clearCredentialState(ClearCredentialStateRequest())
+                }
             }
 
             try {
                 val result = try {
                     credentialManager.getCredential(mutableContext, primaryRequest)
-                } catch (e: NoCredentialException) {
-                    Log.w(TAG, "Primary SIWG returned NoCredentialException, trying GoogleIdOption fallback", e)
-                    val fallbackOption = GetGoogleIdOption.Builder()
-                        .setFilterByAuthorizedAccounts(false)
-                        .setServerClientId(clientId)
-                        .setAutoSelectEnabled(false)
-                        .build()
-                    val fallbackRequest = GetCredentialRequest.Builder()
-                        .addCredentialOption(fallbackOption)
-                        .build()
-                    credentialManager.getCredential(mutableContext, fallbackRequest)
                 } catch (e: GetCredentialUnsupportedException) {
                     Log.w(TAG, "Primary SIWG unsupported, trying GoogleIdOption fallback", e)
                     val fallbackOption = GetGoogleIdOption.Builder()
@@ -228,13 +244,17 @@ object AuthSessionManager {
 
                 val firebaseUser = exchangeCredentialWithFirebase(result.credential)
                 if (firebaseUser != null) {
+                    lastInteractiveAttemptFailed = false
+                    setCompletedSignInBefore(context, true)
                     onAuthSuccess(firebaseUser.toAuthenticatedUser())
                 } else {
+                    lastInteractiveAttemptFailed = true
                     onAuthError("Oturum oluşturulamadı. Lütfen tekrar deneyin.")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: GetCredentialCancellationException) {
+                lastInteractiveAttemptFailed = true
                 val rawDetail = e.errorMessage?.toString() ?: e.message.orEmpty()
                 Log.w(TAG, "Google Sign-In flow cancelled or dismissed: $rawDetail", e)
                 val mappedDiagnostic = mapDiagnosticDetailOrNull(context, rawDetail)
@@ -244,24 +264,31 @@ object AuthSessionManager {
                     onAuthCancelled(context.getString(R.string.auth_cancelled_message))
                 }
             } catch (e: NoCredentialException) {
+                lastInteractiveAttemptFailed = true
                 Log.w(TAG, "No Google credential available on device: ${e.message}", e)
                 onAuthError(context.getString(R.string.auth_no_credential_message))
             } catch (e: GetCredentialProviderConfigurationException) {
+                lastInteractiveAttemptFailed = true
                 Log.e(TAG, "Credential provider configuration error: ${e.errorMessage}", e)
                 onAuthError(context.getString(R.string.auth_play_services_error))
             } catch (e: GetCredentialUnsupportedException) {
+                lastInteractiveAttemptFailed = true
                 Log.e(TAG, "Credential manager unsupported: ${e.errorMessage}", e)
                 onAuthError(context.getString(R.string.auth_play_services_error))
             } catch (e: GetCredentialInterruptedException) {
+                lastInteractiveAttemptFailed = true
                 Log.w(TAG, "Credential request interrupted: ${e.errorMessage}", e)
                 onAuthError("Giriş işlemi kesintiye uğradı. Lütfen tekrar deneyin.")
             } catch (e: GetCredentialException) {
+                lastInteractiveAttemptFailed = true
                 Log.e(TAG, "Google Sign-In credential exception: ${e.type} - ${e.errorMessage}", e)
                 onAuthError(mapCredentialErrorMessage(context, e.errorMessage?.toString()))
             } catch (e: FirebaseNetworkException) {
+                lastInteractiveAttemptFailed = true
                 Log.e(TAG, "Firebase network error during Google Sign-In", e)
                 onAuthError("İnternet bağlantısı kurulamadı. Bağlantınızı kontrol edip tekrar deneyin.")
             } catch (e: FirebaseAuthException) {
+                lastInteractiveAttemptFailed = true
                 Log.e(TAG, "FirebaseAuthException during Google Sign-In: ${e.errorCode}", e)
                 val message = when (e.errorCode) {
                     "ERROR_OPERATION_NOT_ALLOWED" ->
@@ -272,6 +299,7 @@ object AuthSessionManager {
                 }
                 onAuthError(message)
             } catch (e: Exception) {
+                lastInteractiveAttemptFailed = true
                 Log.e(TAG, "Google Sign-In failed", e)
                 onAuthError(mapCredentialErrorMessage(context, e.localizedMessage))
             }
@@ -293,11 +321,16 @@ object AuthSessionManager {
     private fun mapDiagnosticDetailOrNull(context: Context, rawMessage: String?): String? {
         val msg = rawMessage.orEmpty()
         return when {
-            msg.contains("16") || msg.contains("temporarily blocked", ignoreCase = true) ->
-                "Çok fazla deneme yapıldı veya Google giriş penceresi geçici olarak duraklatıldı. Kısa süre sonra tekrar deneyin."
+            msg.contains("16:") ||
+                msg.contains("[16]") ||
+                msg.contains("temporarily blocked", ignoreCase = true) ||
+                msg.contains("too many canceled", ignoreCase = true) ||
+                msg.contains("cooldown", ignoreCase = true) ->
+                context.getString(R.string.auth_rate_limited_message)
             msg.contains("28444") ||
                 msg.contains("Developer console", ignoreCase = true) ||
                 msg.contains("10:") ||
+                msg.contains("[10]") ||
                 msg.contains("12500") ->
                 context.getString(R.string.auth_sha_mismatch_message)
             msg.contains("network", ignoreCase = true) || msg.contains("7:") ->
@@ -316,6 +349,8 @@ object AuthSessionManager {
         onSignOutComplete: () -> Unit = {}
     ) {
         val appContext = context.applicationContext
+        setCompletedSignInBefore(appContext, false)
+        silentAttemptedInProcess = false
         val credentialManager = CredentialManager.create(appContext)
         signOutScope.launch {
             withContext(NonCancellable) {
