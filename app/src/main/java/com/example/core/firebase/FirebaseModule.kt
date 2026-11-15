@@ -59,4 +59,21 @@ class AnalyticsTracker(private val analytics: FirebaseAnalytics) {
         }
         analytics.logEvent("infrastructure_manual_ping", bundle)
     }
+
+    fun logGameStarted(mode: String) {
+        val bundle = Bundle().apply {
+            putString("mode", mode)
+        }
+        analytics.logEvent("rain_cube_game_start", bundle)
+    }
+
+    fun logGameFinished(mode: String, score: Long, wave: Int, durationMs: Long) {
+        val bundle = Bundle().apply {
+            putString("mode", mode)
+            putLong(FirebaseAnalytics.Param.SCORE, score)
+            putLong("wave", wave.toLong())
+            putLong("duration_ms", durationMs)
+        }
+        analytics.logEvent("rain_cube_game_over", bundle)
+    }
 }

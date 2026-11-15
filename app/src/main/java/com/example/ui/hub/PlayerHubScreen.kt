@@ -18,21 +18,28 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Verified
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -60,10 +67,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.example.BuildConfig
 import com.example.R
 import com.example.auth.AuthSessionManager
 import com.example.auth.AuthenticatedUser
 import com.example.core.firebase.AnalyticsTracker
+import com.example.data.model.MatchRecord
+import com.example.game.GameMode
 import com.example.ui.theme.DeepNavy
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.ElevatedSlate
@@ -76,17 +86,28 @@ import com.example.ui.theme.VerifiedEmeraldContainer
 @Composable
 fun PlayerHubScreen(
     user: AuthenticatedUser,
-    viewModel: PlayerHubViewModel
+    viewModel: PlayerHubViewModel,
+    onPlayMode: (GameMode) -> Unit
 ) {
     val context = LocalContext.current
     var isSigningOut by remember { mutableStateOf(false) }
     val hubState by viewModel.hubState.collectAsStateWithLifecycle()
     val stats by viewModel.playerStats.collectAsStateWithLifecycle()
+    val recentMatches by viewModel.recentMatches.collectAsStateWithLifecycle()
     val syncNotice by viewModel.syncNotice.collectAsStateWithLifecycle()
 
     val liveProfile = (hubState as? PlayerHubUiState.Ready)?.profile
     val displayName = liveProfile?.displayName?.takeIf { it.isNotBlank() } ?: user.displayName
     val photoUrl = liveProfile?.photoUrl?.takeIf { it.isNotBlank() } ?: user.photoUrl
+
+    val displayBestScore = maxOf(
+        stats.bestScore,
+        recentMatches.maxOfOrNull { it.score } ?: 0L
+    )
+    val displayMatchesPlayed = maxOf(
+        stats.matchesPlayed,
+        recentMatches.size.toLong()
+    )
 
     Scaffold(
         containerColor = MidnightVoid
@@ -130,14 +151,21 @@ fun PlayerHubScreen(
                                     .size(40.dp)
                                     .clip(RoundedCornerShape(10.dp))
                             )
-                            Text(
-                                text = stringResource(id = R.string.brand_title),
-                                style = MaterialTheme.typography.headlineSmall.copy(
-                                    letterSpacing = 1.8.sp,
-                                    fontWeight = FontWeight.Bold
-                                ),
-                                color = MaterialTheme.colorScheme.onBackground
-                            )
+                            Column {
+                                Text(
+                                    text = stringResource(id = R.string.brand_title),
+                                    style = MaterialTheme.typography.headlineSmall.copy(
+                                        letterSpacing = 1.8.sp,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    text = "v${BuildConfig.VERSION_NAME}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
 
                         IconButton(
@@ -285,6 +313,180 @@ fun PlayerHubScreen(
                     }
                 }
 
+                // Oynanabilir Modlar
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = stringResource(id = R.string.hub_modes_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+
+                        // Klasik Arena (Ana Mod)
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    width = 1.5.dp,
+                                    brush = Brush.horizontalGradient(
+                                        colors = listOf(
+                                            ElectricCyan.copy(alpha = 0.85f),
+                                            PendingAmber.copy(alpha = 0.45f)
+                                        )
+                                    ),
+                                    shape = RoundedCornerShape(22.dp)
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = ElevatedSlate
+                            ),
+                            shape = RoundedCornerShape(22.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(20.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = stringResource(id = R.string.hub_classic_title),
+                                        style = MaterialTheme.typography.titleLarge.copy(
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Surface(
+                                        color = VerifiedEmeraldContainer,
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "3 CAN • 1x",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = VerifiedEmerald,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = stringResource(id = R.string.hub_classic_desc),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Button(
+                                    onClick = { onPlayMode(GameMode.CLASSIC) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp)
+                                        .testTag("play_classic_button"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.PlayArrow,
+                                        contentDescription = null
+                                    )
+                                    Spacer(modifier = Modifier.size(8.dp))
+                                    Text(
+                                        text = stringResource(id = R.string.hub_play_now),
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        // Hız Fırtınası Modu
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    width = 1.dp,
+                                    color = PendingAmber.copy(alpha = 0.45f),
+                                    shape = RoundedCornerShape(20.dp)
+                                ),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            ),
+                            shape = RoundedCornerShape(20.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(18.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.FlashOn,
+                                            contentDescription = null,
+                                            tint = PendingAmber
+                                        )
+                                        Text(
+                                            text = stringResource(id = R.string.hub_rush_title),
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                    Surface(
+                                        color = PendingAmberContainer,
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = "2 CAN • 2x SKOR",
+                                            style = MaterialTheme.typography.labelSmall.copy(
+                                                fontWeight = FontWeight.Bold
+                                            ),
+                                            color = PendingAmber,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                Text(
+                                    text = stringResource(id = R.string.hub_rush_desc),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                OutlinedButton(
+                                    onClick = { onPlayMode(GameMode.RUSH) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(48.dp)
+                                        .testTag("play_rush_button"),
+                                    shape = RoundedCornerShape(14.dp)
+                                ) {
+                                    Text(
+                                        text = "Fırtınaya Gir",
+                                        style = MaterialTheme.typography.titleSmall.copy(
+                                            fontWeight = FontWeight.Bold
+                                        ),
+                                        color = PendingAmber
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Player Summary Stats Grid (2x2)
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -321,14 +523,14 @@ fun PlayerHubScreen(
                             StatTile(
                                 icon = Icons.Outlined.EmojiEvents,
                                 label = "En Yüksek Skor",
-                                value = "${stats.bestScore}",
+                                value = "$displayBestScore",
                                 accent = VerifiedEmerald,
                                 modifier = Modifier.weight(1f)
                             )
                             StatTile(
                                 icon = Icons.Outlined.SportsEsports,
                                 label = "Oynanan Maç",
-                                value = "${stats.matchesPlayed}",
+                                value = "$displayMatchesPlayed",
                                 accent = MaterialTheme.colorScheme.secondary,
                                 modifier = Modifier.weight(1f)
                             )
@@ -336,65 +538,94 @@ fun PlayerHubScreen(
                     }
                 }
 
-                // Upcoming Arena Card
+                // Son Maçlar
                 item {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(
-                                width = 1.dp,
-                                brush = Brush.horizontalGradient(
-                                    colors = listOf(
-                                        ElectricCyan.copy(alpha = 0.45f),
-                                        PendingAmber.copy(alpha = 0.35f)
-                                    )
-                                ),
-                                shape = RoundedCornerShape(20.dp)
+                    Text(
+                        text = stringResource(id = R.string.hub_recent_matches_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+
+                if (recentMatches.isEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
                             ),
-                        colors = CardDefaults.cardColors(
-                            containerColor = ElevatedSlate
-                        ),
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(20.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                            shape = RoundedCornerShape(16.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = stringResource(id = R.string.hub_upcoming_title),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Surface(
-                                    color = PendingAmberContainer,
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = stringResource(id = R.string.hub_upcoming_badge),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = PendingAmber,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-
                             Text(
-                                text = stringResource(id = R.string.hub_upcoming_desc),
+                                text = stringResource(id = R.string.hub_recent_matches_empty),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(18.dp)
                             )
-
-                            Spacer(modifier = Modifier.height(2.dp))
                         }
+                    }
+                } else {
+                    items(recentMatches, key = { it.id }) { match ->
+                        RecentMatchRow(match = match)
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RecentMatchRow(match: MatchRecord) {
+    val modeLabel = if (match.mode == GameMode.RUSH.id) {
+        stringResource(id = R.string.hub_rush_title)
+    } else {
+        stringResource(id = R.string.hub_classic_title)
+    }
+    val durationSec = (match.durationMs / 1000L).coerceAtLeast(1L)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = modeLabel,
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Timer,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "$durationSec sn • v${match.clientVersion}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Text(
+                text = "${match.score} puan",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = ElectricCyan
+            )
         }
     }
 }

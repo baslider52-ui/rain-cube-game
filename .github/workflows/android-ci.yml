@@ -147,6 +147,7 @@ jobs:
           gradle :app:testDebugUnitTest \
             --tests 'com.example.ExampleUnitTest' \
             --tests 'com.example.ExampleRobolectricTest' \
+            --tests 'com.example.RainCubeEngineTest' \
             -PappVersionName="${{ steps.version.outputs.version_name }}" \
             -PappVersionCode="${{ steps.version.outputs.version_code }}" \
             --stacktrace

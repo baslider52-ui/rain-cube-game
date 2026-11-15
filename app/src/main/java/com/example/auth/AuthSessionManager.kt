@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.MutableContextWrapper
 import android.util.Log
 import androidx.credentials.ClearCredentialStateRequest
 import androidx.credentials.Credential
@@ -23,7 +24,9 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential.Companion.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.auth
@@ -127,7 +130,7 @@ object AuthSessionManager {
             return
         }
 
-        val hostContext = context.findActivity() ?: context
+        val hostContext = context.findActivity()?.let { MutableContextWrapper(it) } ?: context
         val credentialManager = CredentialManager.create(hostContext)
         val googleIdOption = GetGoogleIdOption.Builder()
             .setFilterByAuthorizedAccounts(true)
@@ -182,7 +185,8 @@ object AuthSessionManager {
             return
         }
 
-        val credentialManager = CredentialManager.create(activityContext)
+        val mutableContext = MutableContextWrapper(activityContext)
+        val credentialManager = CredentialManager.create(mutableContext)
         val signInOption = GetSignInWithGoogleOption.Builder(serverClientId = clientId).build()
         val primaryRequest = GetCredentialRequest.Builder()
             .addCredentialOption(signInOption)
@@ -197,7 +201,7 @@ object AuthSessionManager {
 
             try {
                 val result = try {
-                    credentialManager.getCredential(activityContext, primaryRequest)
+                    credentialManager.getCredential(mutableContext, primaryRequest)
                 } catch (e: NoCredentialException) {
                     Log.w(TAG, "Primary SIWG returned NoCredentialException, trying GoogleIdOption fallback", e)
                     val fallbackOption = GetGoogleIdOption.Builder()
@@ -208,7 +212,7 @@ object AuthSessionManager {
                     val fallbackRequest = GetCredentialRequest.Builder()
                         .addCredentialOption(fallbackOption)
                         .build()
-                    credentialManager.getCredential(activityContext, fallbackRequest)
+                    credentialManager.getCredential(mutableContext, fallbackRequest)
                 } catch (e: GetCredentialUnsupportedException) {
                     Log.w(TAG, "Primary SIWG unsupported, trying GoogleIdOption fallback", e)
                     val fallbackOption = GetGoogleIdOption.Builder()
@@ -219,7 +223,7 @@ object AuthSessionManager {
                     val fallbackRequest = GetCredentialRequest.Builder()
                         .addCredentialOption(fallbackOption)
                         .build()
-                    credentialManager.getCredential(activityContext, fallbackRequest)
+                    credentialManager.getCredential(mutableContext, fallbackRequest)
                 }
 
                 val firebaseUser = exchangeCredentialWithFirebase(result.credential)
@@ -231,8 +235,14 @@ object AuthSessionManager {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: GetCredentialCancellationException) {
-                Log.w(TAG, "Google Sign-In flow cancelled or dismissed: ${e.message}", e)
-                onAuthCancelled(context.getString(R.string.auth_cancelled_message))
+                val rawDetail = e.errorMessage?.toString() ?: e.message.orEmpty()
+                Log.w(TAG, "Google Sign-In flow cancelled or dismissed: $rawDetail", e)
+                val mappedDiagnostic = mapDiagnosticDetailOrNull(context, rawDetail)
+                if (mappedDiagnostic != null) {
+                    onAuthError(mappedDiagnostic)
+                } else {
+                    onAuthCancelled(context.getString(R.string.auth_cancelled_message))
+                }
             } catch (e: NoCredentialException) {
                 Log.w(TAG, "No Google credential available on device: ${e.message}", e)
                 onAuthError(context.getString(R.string.auth_no_credential_message))
@@ -248,6 +258,19 @@ object AuthSessionManager {
             } catch (e: GetCredentialException) {
                 Log.e(TAG, "Google Sign-In credential exception: ${e.type} - ${e.errorMessage}", e)
                 onAuthError(mapCredentialErrorMessage(context, e.errorMessage?.toString()))
+            } catch (e: FirebaseNetworkException) {
+                Log.e(TAG, "Firebase network error during Google Sign-In", e)
+                onAuthError("İnternet bağlantısı kurulamadı. Bağlantınızı kontrol edip tekrar deneyin.")
+            } catch (e: FirebaseAuthException) {
+                Log.e(TAG, "FirebaseAuthException during Google Sign-In: ${e.errorCode}", e)
+                val message = when (e.errorCode) {
+                    "ERROR_OPERATION_NOT_ALLOWED" ->
+                        "Firebase projesinde Google ile Giriş sağlayıcısı etkinleştirilmemiş."
+                    "ERROR_USER_DISABLED" ->
+                        "Bu Google hesabı bu uygulama için devre dışı bırakılmış."
+                    else -> mapCredentialErrorMessage(context, e.localizedMessage)
+                }
+                onAuthError(message)
             } catch (e: Exception) {
                 Log.e(TAG, "Google Sign-In failed", e)
                 onAuthError(mapCredentialErrorMessage(context, e.localizedMessage))
@@ -267,18 +290,25 @@ object AuthSessionManager {
         return null
     }
 
-    private fun mapCredentialErrorMessage(context: Context, rawMessage: String?): String {
+    private fun mapDiagnosticDetailOrNull(context: Context, rawMessage: String?): String? {
         val msg = rawMessage.orEmpty()
         return when {
             msg.contains("16") || msg.contains("temporarily blocked", ignoreCase = true) ->
                 "Çok fazla deneme yapıldı veya Google giriş penceresi geçici olarak duraklatıldı. Kısa süre sonra tekrar deneyin."
-            msg.contains("28444") || msg.contains("Developer console", ignoreCase = true) ||
-                msg.contains("10:") ->
+            msg.contains("28444") ||
+                msg.contains("Developer console", ignoreCase = true) ||
+                msg.contains("10:") ||
+                msg.contains("12500") ->
                 context.getString(R.string.auth_sha_mismatch_message)
             msg.contains("network", ignoreCase = true) || msg.contains("7:") ->
                 "İnternet bağlantısı kurulamadı. Bağlantınızı kontrol edip tekrar deneyin."
-            else -> context.getString(R.string.auth_generic_error)
+            else -> null
         }
+    }
+
+    private fun mapCredentialErrorMessage(context: Context, rawMessage: String?): String {
+        return mapDiagnosticDetailOrNull(context, rawMessage)
+            ?: context.getString(R.string.auth_generic_error)
     }
 
     fun signOut(

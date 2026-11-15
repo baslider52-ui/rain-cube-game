@@ -42,8 +42,8 @@ Rain Cube adım adım geliştirilmektedir:
 - [x] Uygulama tasarımı, özel ikon ve oyuncu girişi
 - [x] Oyuncu profili ve bulut kayıt altyapısı
 - [x] GitHub üzerinden otomatik APK dağıtımı
-- [ ] Ana oyun arenası ve küp kontrol mekanikleri
-- [ ] İz efekti, rakipler ve XP sistemi
+- [x] Ana oyun arenası ve küp kontrol mekanikleri (Klasik Arena & Hız Fırtınası)
+- [x] İz efekti, taç kalkanı, engeller ve bulut maç kaydı
 - [ ] Genel ve haftalık sıralama ekranları
 
 ---
