@@ -21,6 +21,7 @@ import com.example.auth.AuthSessionManager
 import com.example.auth.AuthSessionManager.toAuthenticatedUser
 import com.example.core.firebase.FirebaseModule
 import com.example.data.repository.MatchRecordRepository
+import com.example.data.repository.OnlineArenaRepository
 import com.example.data.repository.UserProfileRepository
 import com.example.game.GameMode
 import com.example.ui.auth.AuthGateScreen
@@ -29,7 +30,6 @@ import com.example.ui.game.RainCubeGameViewModel
 import com.example.ui.hub.PlayerHubScreen
 import com.example.ui.hub.PlayerHubViewModel
 import com.example.ui.theme.RainCubeTheme
-import com.example.update.UpdatePrefs
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 
@@ -88,12 +88,8 @@ fun RainCubeRoot() {
                             repository = UserProfileRepository(db = firestore, auth = auth),
                             matchRepository = MatchRecordRepository(db = firestore, auth = auth),
                             authenticatedUser = authenticatedUser,
-                            initialRepoSlug = UpdatePrefs.getEffectiveRepoSlug(
-                                app,
-                                BuildConfig.GITHUB_REPO_SLUG
-                            ),
-                            currentVersionName = BuildConfig.VERSION_NAME,
-                            onSaveRepoSlug = { raw -> UpdatePrefs.saveCustomRepoSlug(app, raw) }
+                            initialRepoSlug = BuildConfig.GITHUB_REPO_SLUG,
+                            currentVersionName = BuildConfig.VERSION_NAME
                         )
                     }
                 }
@@ -128,6 +124,9 @@ fun RainCubeRoot() {
                                 val firestore = FirebaseModule.provideFirestore(app)
                                 RainCubeGameViewModel(
                                     matchRepository = MatchRecordRepository(db = firestore, auth = auth),
+                                    onlineArenaRepository = OnlineArenaRepository(db = firestore, auth = auth),
+                                    currentUserId = authenticatedUser.uid,
+                                    currentDisplayName = authenticatedUser.displayName,
                                     initialMode = selectedMode
                                 )
                             }

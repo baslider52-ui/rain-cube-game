@@ -6,8 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.input.pointer.positionChange
-import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +26,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Pause
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.Refresh
@@ -47,8 +46,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -77,7 +80,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
 import com.example.core.firebase.AnalyticsTracker
 import com.example.game.FallingEntityKind
-import com.example.game.GameMode
 import com.example.game.GameStatus
 import com.example.game.RainCubeGameState
 import com.example.ui.theme.DeepNavy
@@ -90,6 +92,10 @@ import com.example.ui.theme.PendingAmberContainer
 import com.example.ui.theme.SkyPulse
 import com.example.ui.theme.VerifiedEmerald
 import com.example.ui.theme.VerifiedEmeraldContainer
+import java.util.Locale
+import kotlin.math.floor
+import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 @Composable
 fun RainCubeGameScreen(
@@ -100,12 +106,22 @@ fun RainCubeGameScreen(
     val context = LocalContext.current
     val gameState by viewModel.gameState.collectAsStateWithLifecycle()
     val saveState by viewModel.saveState.collectAsStateWithLifecycle()
+    val remotePlayers by viewModel.remotePlayers.collectAsStateWithLifecycle()
     val textMeasurer = rememberTextMeasurer()
 
     BackHandler {
         when (gameState.status) {
             GameStatus.RUNNING -> viewModel.pause()
-            GameStatus.PAUSED, GameStatus.READY, GameStatus.GAME_OVER -> onExitToHub()
+            GameStatus.PAUSED, GameStatus.READY, GameStatus.GAME_OVER -> {
+                viewModel.leaveArenaNow()
+                onExitToHub()
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.leaveArenaNow()
         }
     }
 
@@ -150,47 +166,34 @@ fun RainCubeGameScreen(
                 )
                 .padding(innerPadding)
         ) {
-            // Ana 60fps Oyun Alanı + Dokunmatik Sürükleme Kontrolü
+            // Ana 60fps Sonsuz Harita Canvas'ı (Çevrimiçi oyuncular + İsim etiketleri)
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
                     .testTag("rain_cube_arena_canvas")
-                    .pointerInput(gameState.status) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            if (size.width <= 0) return@awaitEachGesture
-                            if (gameState.status == GameStatus.READY) {
-                                viewModel.startOrResume()
-                            } else if (gameState.status == GameStatus.RUNNING) {
-                                viewModel.movePlayerTo(down.position.x / size.width.toFloat())
-                            }
-                            down.consume()
-
-                            var dragged = false
-                            while (true) {
-                                val event = awaitPointerEvent()
-                                val change = event.changes.firstOrNull { it.id == down.id }
-                                    ?: event.changes.firstOrNull()
-                                    ?: break
-                                if (!change.pressed) break
-                                val deltaX = change.positionChange().x
-                                if (deltaX != 0f && gameState.status == GameStatus.RUNNING) {
-                                    dragged = true
-                                    viewModel.movePlayerBy(deltaX / size.width.toFloat())
-                                    change.consume()
-                                } else if (!dragged && gameState.status == GameStatus.RUNNING) {
-                                    viewModel.movePlayerTo(change.position.x / size.width.toFloat())
-                                }
-                            }
-                        }
-                    }
             ) {
-                drawArenaGrid(gameState.gridScrollOffset)
-                drawTrail(gameState)
-                drawEntities(gameState)
-                drawPlayerCube(gameState)
-                drawParticles(gameState)
-                drawFloatingCallouts(gameState, textMeasurer)
+                val pixelsPerUnit = size.minDimension.coerceAtLeast(1f)
+                drawInfiniteArenaGrid(
+                    cameraX = gameState.cameraX,
+                    cameraY = gameState.cameraY,
+                    pixelsPerUnit = pixelsPerUnit
+                )
+                drawTrail(gameState, pixelsPerUnit)
+                drawEntities(gameState, pixelsPerUnit)
+                drawRemotePlayers(
+                    state = gameState,
+                    remotePlayers = remotePlayers,
+                    pixelsPerUnit = pixelsPerUnit,
+                    textMeasurer = textMeasurer
+                )
+                drawPlayerCube(
+                    state = gameState,
+                    displayName = viewModel.currentDisplayName,
+                    pixelsPerUnit = pixelsPerUnit,
+                    textMeasurer = textMeasurer
+                )
+                drawParticles(gameState, pixelsPerUnit)
+                drawFloatingCallouts(gameState, pixelsPerUnit, textMeasurer)
 
                 if (gameState.hitFlashAlpha > 0f) {
                     drawRect(
@@ -200,9 +203,10 @@ fun RainCubeGameScreen(
                 }
             }
 
-            // Üst HUD
+            // Üst HUD (Skor, Çevrimiçi Oyuncu Sayısı, Harita Koordinatı, Canlar, Duraklat)
             GameHudOverlay(
                 state = gameState,
+                onlineCount = remotePlayers.size + 1,
                 onPauseClick = {
                     if (gameState.status == GameStatus.RUNNING) {
                         viewModel.pause()
@@ -214,6 +218,7 @@ fun RainCubeGameScreen(
                     if (gameState.status == GameStatus.RUNNING) {
                         viewModel.pause()
                     } else {
+                        viewModel.leaveArenaNow()
                         onExitToHub()
                     }
                 },
@@ -224,21 +229,35 @@ fun RainCubeGameScreen(
                     .padding(horizontal = 14.dp, vertical = 10.dp)
             )
 
-            // Alt kontrol ipucu (ilk saniyeler)
-            if (gameState.status == GameStatus.RUNNING && gameState.elapsedSeconds < 4.5f) {
-                Surface(
-                    color = DeepNavy.copy(alpha = 0.82f),
-                    shape = RoundedCornerShape(14.dp),
+            // Alt Joystik Kontrolü (Oyun aktifken)
+            if (gameState.status == GameStatus.RUNNING || gameState.status == GameStatus.READY) {
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
-                        .padding(bottom = 18.dp)
+                        .padding(bottom = 18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        text = "Küpü yönlendirmek için parmağını sağa/sola kaydır",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = ElectricCyan,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    if (gameState.elapsedSeconds < 4.5f) {
+                        Surface(
+                            color = DeepNavy.copy(alpha = 0.84f),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(
+                                text = stringResource(id = R.string.game_joystick_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ElectricCyan,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+
+                    VirtualJoystick(
+                        onVectorChange = { dx, dy ->
+                            viewModel.setJoystickInput(dx, dy)
+                        },
+                        modifier = Modifier.testTag("virtual_joystick")
                     )
                 }
             }
@@ -248,7 +267,10 @@ fun RainCubeGameScreen(
                 PauseOverlay(
                     onResume = { viewModel.startOrResume() },
                     onRestart = { viewModel.restart() },
-                    onExit = onExitToHub
+                    onExit = {
+                        viewModel.leaveArenaNow()
+                        onExitToHub()
+                    }
                 )
             }
 
@@ -260,7 +282,10 @@ fun RainCubeGameScreen(
                     isNewRecord = gameState.score > bestPreviousScore && gameState.score > 0L,
                     onPlayAgain = { viewModel.restart() },
                     onRetrySave = { viewModel.retrySaveMatch() },
-                    onExit = onExitToHub
+                    onExit = {
+                        viewModel.leaveArenaNow()
+                        onExitToHub()
+                    }
                 )
             }
         }
@@ -268,8 +293,134 @@ fun RainCubeGameScreen(
 }
 
 @Composable
+private fun VirtualJoystick(
+    onVectorChange: (Float, Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var knobOffset by remember { mutableStateOf(Offset.Zero) }
+    var isPressed by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = modifier
+            .size(136.dp)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = true)
+                    val center = Offset(size.width * 0.5f, size.height * 0.5f)
+                    val maxRadius = (size.width.coerceAtMost(size.height) * 0.36f).coerceAtLeast(1f)
+
+                    fun updateFromPosition(pos: Offset) {
+                        val delta = pos - center
+                        val dist = hypot(delta.x, delta.y)
+                        val clamped = if (dist > maxRadius && dist > 0f) {
+                            delta * (maxRadius / dist)
+                        } else {
+                            delta
+                        }
+                        knobOffset = clamped
+                        onVectorChange(
+                            (clamped.x / maxRadius).coerceIn(-1f, 1f),
+                            (clamped.y / maxRadius).coerceIn(-1f, 1f)
+                        )
+                    }
+
+                    isPressed = true
+                    updateFromPosition(down.position)
+                    down.consume()
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                            ?: event.changes.firstOrNull()
+                            ?: break
+                        if (!change.pressed) break
+                        updateFromPosition(change.position)
+                        change.consume()
+                    }
+
+                    isPressed = false
+                    knobOffset = Offset.Zero
+                    onVectorChange(0f, 0f)
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(size.width * 0.5f, size.height * 0.5f)
+            val outerRadius = size.minDimension * 0.46f
+            val maxTravelRadius = size.minDimension * 0.36f
+            val knobRadius = size.minDimension * 0.19f
+
+            // Dış neon halka gövdesi
+            drawCircle(
+                color = MidnightVoid.copy(alpha = 0.65f),
+                center = center,
+                radius = outerRadius
+            )
+            drawCircle(
+                color = ElectricCyan.copy(alpha = if (isPressed) 0.72f else 0.38f),
+                center = center,
+                radius = outerRadius,
+                style = Stroke(width = if (isPressed) 3.5f else 2.2f)
+            )
+
+            // İç yön işaretçileri (Kuzey, Güney, Doğu, Batı)
+            val tickInner = outerRadius * 0.74f
+            val tickOuter = outerRadius * 0.88f
+            val tickColor = ElectricCyan.copy(alpha = 0.42f)
+            drawLine(tickColor, Offset(center.x, center.y - tickInner), Offset(center.x, center.y - tickOuter), strokeWidth = 2.5f, cap = StrokeCap.Round)
+            drawLine(tickColor, Offset(center.x, center.y + tickInner), Offset(center.x, center.y + tickOuter), strokeWidth = 2.5f, cap = StrokeCap.Round)
+            drawLine(tickColor, Offset(center.x - tickInner, center.y), Offset(center.x - tickOuter, center.y), strokeWidth = 2.5f, cap = StrokeCap.Round)
+            drawLine(tickColor, Offset(center.x + tickInner, center.y), Offset(center.x + tickOuter, center.y), strokeWidth = 2.5f, cap = StrokeCap.Round)
+
+            // İç rehber çemberi
+            drawCircle(
+                color = ElectricCyan.copy(alpha = 0.16f),
+                center = center,
+                radius = maxTravelRadius * 0.55f,
+                style = Stroke(width = 1.5f)
+            )
+
+            val knobCenter = center + knobOffset
+
+            // Merkezden joystik topuzuna neon ışın çizgisi
+            if (isPressed && hypot(knobOffset.x, knobOffset.y) > 4f) {
+                drawLine(
+                    color = ElectricCyan.copy(alpha = 0.55f),
+                    start = center,
+                    end = knobCenter,
+                    strokeWidth = 4f,
+                    cap = StrokeCap.Round
+                )
+            }
+
+            // Joystik topuzu
+            drawCircle(
+                color = ElectricCyan.copy(alpha = if (isPressed) 0.32f else 0.18f),
+                center = knobCenter,
+                radius = knobRadius * 1.32f
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xFFA5F3FC), ElectricCyan, Color(0xFF0284C7)),
+                    center = knobCenter,
+                    radius = knobRadius
+                ),
+                center = knobCenter,
+                radius = knobRadius
+            )
+            drawCircle(
+                color = Color.White.copy(alpha = 0.65f),
+                center = knobCenter,
+                radius = knobRadius * 0.42f
+            )
+        }
+    }
+}
+
+@Composable
 private fun GameHudOverlay(
     state: RainCubeGameState,
+    onlineCount: Int,
     onPauseClick: () -> Unit,
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -313,8 +464,10 @@ private fun GameHudOverlay(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        val sectorX = (state.playerX * 10f).roundToInt()
+                        val sectorY = (-state.playerY * 10f).roundToInt()
                         Text(
-                            text = "Dalga ${state.wave}",
+                            text = "Dalga ${state.wave} • ($sectorX, $sectorY)",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -339,8 +492,32 @@ private fun GameHudOverlay(
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Surface(
+                    color = VerifiedEmeraldContainer.copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.testTag("online_players_badge")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Group,
+                            contentDescription = null,
+                            tint = VerifiedEmerald,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = stringResource(id = R.string.game_online_count, onlineCount),
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = VerifiedEmerald
+                        )
+                    }
+                }
+
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     for (i in 1..state.maxLives) {
                         val alive = i <= state.lives
@@ -348,7 +525,7 @@ private fun GameHudOverlay(
                             imageVector = if (alive) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                             contentDescription = "Can $i",
                             tint = if (alive) ErrorCoral else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -542,7 +719,6 @@ private fun GameOverOverlay(
                     ResultMetric("Süre", "${state.elapsedSeconds.toInt()} sn")
                 }
 
-                // Bulut Kayıt Durumu
                 Surface(
                     color = when (saveState) {
                         is MatchSaveState.Saved -> VerifiedEmeraldContainer
@@ -664,53 +840,222 @@ private fun ResultMetric(label: String, value: String) {
     }
 }
 
-private fun DrawScope.drawArenaGrid(scrollOffset: Float) {
-    val gridColor = ElectricCyan.copy(alpha = 0.09f)
-    val cols = 6
-    for (i in 0..cols) {
-        val x = size.width * (i / cols.toFloat())
+private fun DrawScope.worldToScreen(
+    wx: Float,
+    wy: Float,
+    cameraX: Float,
+    cameraY: Float,
+    pixelsPerUnit: Float
+): Offset {
+    return Offset(
+        x = size.width * 0.5f + (wx - cameraX) * pixelsPerUnit,
+        y = size.height * 0.5f + (wy - cameraY) * pixelsPerUnit
+    )
+}
+
+private fun DrawScope.drawInfiniteArenaGrid(
+    cameraX: Float,
+    cameraY: Float,
+    pixelsPerUnit: Float
+) {
+    val cellWorldSize = 0.22f
+    val halfWorldW = (size.width * 0.5f) / pixelsPerUnit
+    val halfWorldH = (size.height * 0.5f) / pixelsPerUnit
+
+    val startCol = floor((cameraX - halfWorldW) / cellWorldSize).toInt() - 1
+    val endCol = floor((cameraX + halfWorldW) / cellWorldSize).toInt() + 1
+    val startRow = floor((cameraY - halfWorldH) / cellWorldSize).toInt() - 1
+    val endRow = floor((cameraY + halfWorldH) / cellWorldSize).toInt() + 1
+
+    val minorColor = ElectricCyan.copy(alpha = 0.08f)
+    val majorColor = ElectricCyan.copy(alpha = 0.19f)
+
+    for (col in startCol..endCol) {
+        val wx = col * cellWorldSize
+        val sx = size.width * 0.5f + (wx - cameraX) * pixelsPerUnit
+        val isMajor = col % 4 == 0
         drawLine(
-            color = gridColor,
-            start = Offset(x, 0f),
-            end = Offset(x, size.height),
-            strokeWidth = 1.2f
+            color = if (isMajor) majorColor else minorColor,
+            start = Offset(sx, 0f),
+            end = Offset(sx, size.height),
+            strokeWidth = if (isMajor) 1.8f else 1.1f
         )
     }
 
-    val rows = 10
-    val stepY = size.height / rows
-    val offsetPx = scrollOffset * stepY
-    for (j in -1..rows) {
-        val y = j * stepY + offsetPx
+    for (row in startRow..endRow) {
+        val wy = row * cellWorldSize
+        val sy = size.height * 0.5f + (wy - cameraY) * pixelsPerUnit
+        val isMajor = row % 4 == 0
         drawLine(
-            color = gridColor,
-            start = Offset(0f, y),
-            end = Offset(size.width, y),
-            strokeWidth = 1.2f
+            color = if (isMajor) majorColor else minorColor,
+            start = Offset(0f, sy),
+            end = Offset(size.width, sy),
+            strokeWidth = if (isMajor) 1.8f else 1.1f
         )
     }
 }
 
-private fun DrawScope.drawTrail(state: RainCubeGameState) {
+private fun DrawScope.drawTrail(state: RainCubeGameState, pixelsPerUnit: Float) {
     val trailColor = if (state.hasShield) PendingAmber else ElectricCyan
-    val baseRadius = size.minDimension * state.playerHalfSize * 0.72f
+    val baseRadius = pixelsPerUnit * state.playerHalfSize * 0.72f
     for (node in state.trail) {
-        val cx = node.x * size.width
-        val cy = node.y * size.height
+        val pos = worldToScreen(node.x, node.y, state.cameraX, state.cameraY, pixelsPerUnit)
         val r = baseRadius * node.radiusScale
         drawRoundRect(
             color = trailColor.copy(alpha = node.alpha * 0.35f),
-            topLeft = Offset(cx - r, cy - r),
+            topLeft = Offset(pos.x - r, pos.y - r),
             size = Size(r * 2f, r * 2f),
             cornerRadius = CornerRadius(r * 0.45f, r * 0.45f)
         )
     }
 }
 
-private fun DrawScope.drawPlayerCube(state: RainCubeGameState) {
-    val cx = state.playerX * size.width
-    val cy = state.playerY * size.height
-    val halfPx = size.minDimension * state.playerHalfSize
+private fun DrawScope.drawNameBadgeAboveCube(
+    name: String,
+    cubeCenterX: Float,
+    cubeTopY: Float,
+    accentColor: Color,
+    textMeasurer: TextMeasurer
+) {
+    val cleanName = name.trim().take(20).ifEmpty { "Oyuncu" }
+    val measured = textMeasurer.measure(
+        text = cleanName,
+        style = TextStyle(
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    )
+    val padH = 12f
+    val padV = 4f
+    val boxW = measured.size.width + padH * 2f
+    val boxH = measured.size.height + padV * 2f
+    val left = cubeCenterX - boxW * 0.5f
+    val top = cubeTopY - boxH - 10f
+
+    drawRoundRect(
+        color = MidnightVoid.copy(alpha = 0.82f),
+        topLeft = Offset(left, top),
+        size = Size(boxW, boxH),
+        cornerRadius = CornerRadius(12f, 12f)
+    )
+    drawRoundRect(
+        color = accentColor.copy(alpha = 0.65f),
+        topLeft = Offset(left, top),
+        size = Size(boxW, boxH),
+        cornerRadius = CornerRadius(12f, 12f),
+        style = Stroke(width = 1.6f)
+    )
+    drawText(
+        textLayoutResult = measured,
+        topLeft = Offset(left + padH, top + padV)
+    )
+}
+
+private fun DrawScope.drawRemotePlayers(
+    state: RainCubeGameState,
+    remotePlayers: List<RemoteArenaPlayer>,
+    pixelsPerUnit: Float,
+    textMeasurer: TextMeasurer
+) {
+    val halfPx = pixelsPerUnit * state.playerHalfSize * 0.94f
+    val padEdge = 36f
+
+    for (remote in remotePlayers) {
+        val pos = worldToScreen(
+            wx = remote.renderX,
+            wy = remote.renderY,
+            cameraX = state.cameraX,
+            cameraY = state.cameraY,
+            pixelsPerUnit = pixelsPerUnit
+        )
+
+        val onScreen = pos.x in (-halfPx * 2f)..(size.width + halfPx * 2f) &&
+            pos.y in (-halfPx * 2f)..(size.height + halfPx * 2f)
+
+        if (onScreen) {
+            if (remote.shieldActive) {
+                drawCircle(
+                    color = PendingAmber.copy(alpha = 0.72f),
+                    center = pos,
+                    radius = halfPx * 1.48f,
+                    style = Stroke(width = 3f)
+                )
+            }
+
+            // Çevrimiçi oyuncu küpü (Zümrüt-Mint neon gövde)
+            drawRoundRect(
+                color = VerifiedEmerald.copy(alpha = 0.25f),
+                topLeft = Offset(pos.x - halfPx * 1.24f, pos.y - halfPx * 1.24f),
+                size = Size(halfPx * 2.48f, halfPx * 2.48f),
+                cornerRadius = CornerRadius(halfPx * 0.45f, halfPx * 0.45f)
+            )
+            drawRoundRect(
+                brush = Brush.linearGradient(
+                    colors = listOf(Color(0xFF6EE7B7), VerifiedEmerald, Color(0xFF059669)),
+                    start = Offset(pos.x - halfPx, pos.y - halfPx),
+                    end = Offset(pos.x + halfPx, pos.y + halfPx)
+                ),
+                topLeft = Offset(pos.x - halfPx, pos.y - halfPx),
+                size = Size(halfPx * 2f, halfPx * 2f),
+                cornerRadius = CornerRadius(halfPx * 0.35f, halfPx * 0.35f)
+            )
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.65f),
+                topLeft = Offset(pos.x - halfPx * 0.38f, pos.y - halfPx * 0.38f),
+                size = Size(halfPx * 0.76f, halfPx * 0.76f),
+                cornerRadius = CornerRadius(halfPx * 0.2f, halfPx * 0.2f)
+            )
+
+            drawNameBadgeAboveCube(
+                name = remote.displayName,
+                cubeCenterX = pos.x,
+                cubeTopY = pos.y - halfPx,
+                accentColor = VerifiedEmerald,
+                textMeasurer = textMeasurer
+            )
+        } else {
+            // Ekran dışındaki çevrimiçi oyuncu için kenar göstergesi
+            val edgeX = pos.x.coerceIn(padEdge, size.width - padEdge)
+            val edgeY = pos.y.coerceIn(padEdge + 96f, size.height - padEdge - 160f)
+            drawCircle(
+                color = VerifiedEmerald.copy(alpha = 0.85f),
+                center = Offset(edgeX, edgeY),
+                radius = 9f
+            )
+            val tag = textMeasurer.measure(
+                text = remote.displayName.take(12),
+                style = TextStyle(
+                    color = VerifiedEmerald,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            val tagX = (edgeX - tag.size.width * 0.5f)
+                .coerceIn(10f, (size.width - tag.size.width - 10f).coerceAtLeast(10f))
+            val tagY = (edgeY + 12f)
+                .coerceIn(10f, (size.height - tag.size.height - 10f).coerceAtLeast(10f))
+            drawText(tag, topLeft = Offset(tagX, tagY))
+        }
+    }
+}
+
+private fun DrawScope.drawPlayerCube(
+    state: RainCubeGameState,
+    displayName: String,
+    pixelsPerUnit: Float,
+    textMeasurer: TextMeasurer
+) {
+    val pos = worldToScreen(
+        wx = state.playerX,
+        wy = state.playerY,
+        cameraX = state.cameraX,
+        cameraY = state.cameraY,
+        pixelsPerUnit = pixelsPerUnit
+    )
+    val cx = pos.x
+    val cy = pos.y
+    val halfPx = pixelsPerUnit * state.playerHalfSize
     val blinkSkip = state.invulnerableSeconds > 0f &&
         ((state.invulnerableSeconds * 16f).toInt() % 2 == 0)
 
@@ -737,7 +1082,6 @@ private fun DrawScope.drawPlayerCube(state: RainCubeGameState) {
     }
 
     if (!blinkSkip) {
-        // Neon dış parlama
         drawRoundRect(
             color = ElectricCyan.copy(alpha = 0.28f),
             topLeft = Offset(cx - halfPx * 1.24f, cy - halfPx * 1.24f),
@@ -745,7 +1089,6 @@ private fun DrawScope.drawPlayerCube(state: RainCubeGameState) {
             cornerRadius = CornerRadius(halfPx * 0.48f, halfPx * 0.48f)
         )
 
-        // Ana küp gövdesi
         drawRoundRect(
             brush = Brush.linearGradient(
                 colors = listOf(Color(0xFF67E8F9), ElectricCyan, Color(0xFF0284C7)),
@@ -757,7 +1100,6 @@ private fun DrawScope.drawPlayerCube(state: RainCubeGameState) {
             cornerRadius = CornerRadius(halfPx * 0.36f, halfPx * 0.36f)
         )
 
-        // İç parlak çekirdek
         drawRoundRect(
             color = Color.White.copy(alpha = 0.72f),
             topLeft = Offset(cx - halfPx * 0.42f, cy - halfPx * 0.42f),
@@ -765,13 +1107,27 @@ private fun DrawScope.drawPlayerCube(state: RainCubeGameState) {
             cornerRadius = CornerRadius(halfPx * 0.22f, halfPx * 0.22f)
         )
     }
+
+    drawNameBadgeAboveCube(
+        name = displayName,
+        cubeCenterX = cx,
+        cubeTopY = cy - halfPx,
+        accentColor = if (state.hasShield) PendingAmber else ElectricCyan,
+        textMeasurer = textMeasurer
+    )
 }
 
-private fun DrawScope.drawEntities(state: RainCubeGameState) {
+private fun DrawScope.drawEntities(state: RainCubeGameState, pixelsPerUnit: Float) {
     for (entity in state.entities) {
-        val cx = entity.x * size.width
-        val cy = entity.y * size.height
-        val half = size.minDimension * entity.size * 0.5f
+        val pos = worldToScreen(entity.x, entity.y, state.cameraX, state.cameraY, pixelsPerUnit)
+        val half = pixelsPerUnit * entity.size * 0.5f
+        if (pos.x < -half * 3f || pos.x > size.width + half * 3f ||
+            pos.y < -half * 3f || pos.y > size.height + half * 3f
+        ) {
+            continue
+        }
+        val cx = pos.x
+        val cy = pos.y
 
         when (entity.kind) {
             FallingEntityKind.HAZARD -> {
@@ -848,8 +1204,9 @@ private fun DrawScope.drawEntities(state: RainCubeGameState) {
     }
 }
 
-private fun DrawScope.drawParticles(state: RainCubeGameState) {
+private fun DrawScope.drawParticles(state: RainCubeGameState, pixelsPerUnit: Float) {
     for (p in state.particles) {
+        val pos = worldToScreen(p.x, p.y, state.cameraX, state.cameraY, pixelsPerUnit)
         val alpha = (p.life / p.maxLife).coerceIn(0f, 1f)
         val color = when {
             p.isDanger -> ErrorCoral
@@ -858,7 +1215,7 @@ private fun DrawScope.drawParticles(state: RainCubeGameState) {
         }
         drawCircle(
             color = color.copy(alpha = alpha),
-            center = Offset(p.x * size.width, p.y * size.height),
+            center = pos,
             radius = 5.5f * alpha + 2f
         )
     }
@@ -866,9 +1223,11 @@ private fun DrawScope.drawParticles(state: RainCubeGameState) {
 
 private fun DrawScope.drawFloatingCallouts(
     state: RainCubeGameState,
+    pixelsPerUnit: Float,
     textMeasurer: TextMeasurer
 ) {
     for (c in state.callouts) {
+        val pos = worldToScreen(c.x, c.y, state.cameraX, state.cameraY, pixelsPerUnit)
         val alpha = (c.life / 1.0f).coerceIn(0f, 1f)
         val color = when {
             c.isDanger -> ErrorCoral
@@ -883,9 +1242,9 @@ private fun DrawScope.drawFloatingCallouts(
                 fontWeight = FontWeight.Bold
             )
         )
-        val x = (c.x * size.width - measured.size.width / 2f)
+        val x = (pos.x - measured.size.width / 2f)
             .coerceIn(12f, (size.width - measured.size.width - 12f).coerceAtLeast(12f))
-        val y = (c.y * size.height - measured.size.height / 2f)
+        val y = (pos.y - measured.size.height / 2f)
             .coerceIn(12f, (size.height - measured.size.height - 12f).coerceAtLeast(12f))
         drawText(textLayoutResult = measured, topLeft = Offset(x, y))
     }

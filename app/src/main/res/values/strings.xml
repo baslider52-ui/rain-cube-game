@@ -16,9 +16,9 @@
     <string name="hub_stats_title">Oyuncu Özeti</string>
     <string name="hub_modes_title">Oyun Modları</string>
     <string name="hub_classic_title">Klasik Arena</string>
-    <string name="hub_classic_desc">Parmağını sürükleyerek neon yağmur küplerinden kaç, enerji küplerini ve altın tacı topla.</string>
+    <string name="hub_classic_desc">Çevrimiçi sonsuz haritada joystik ile süzül, enerji küplerini ve altın tacı topla, diğer oyuncularla yarış.</string>
     <string name="hub_rush_title">Hız Fırtınası</string>
-    <string name="hub_rush_desc">Yüksek hızda yoğun yağmur dalgaları, 2 can ve daha yüksek puan çarpanı.</string>
+    <string name="hub_rush_desc">Çevrimiçi yüksek hızlı sonsuz harita, 2 can ve 2x puan çarpanı.</string>
     <string name="hub_play_now">Hemen Oyna</string>
     <string name="hub_recent_matches_title">Son Maçlar</string>
     <string name="hub_recent_matches_empty">Henüz kayıtlı maçın yok. İlk oyununu başlatıp skorunu buluta kaydet!</string>
@@ -32,6 +32,8 @@
     <string name="game_saving_score">Skor buluta kaydediliyor…</string>
     <string name="game_score_saved">Skor bulut profiline kaydedildi</string>
     <string name="game_score_save_failed">Skor kaydedilemedi. Bağlantını kontrol et.</string>
+    <string name="game_online_count">Çevrimiçi: %1$d</string>
+    <string name="game_joystick_hint">Sonsuz haritada hareket etmek için joystiği kullan</string>
     <string name="update_section_title">Sürüm ve GitHub Güncellemeleri</string>
     <string name="update_check_now">Güncellemeyi Kontrol Et</string>
     <string name="update_checking">GitHub Releases kontrol ediliyor…</string>
@@ -39,10 +41,7 @@
     <string name="update_available_badge">Yeni Sürüm Var</string>
     <string name="update_download_install">Yeni Sürümü İndir</string>
     <string name="update_open_releases">GitHub Releases</string>
-    <string name="update_connect_repo">GitHub Deposunu Bağla</string>
-    <string name="update_repo_hint">kullanici/depo veya GitHub linki</string>
-    <string name="update_save_and_check">Bağla ve Kontrol Et</string>
-    <string name="update_edit_repo">Depoyu Değiştir</string>
+    <string name="update_auto_only_info">Otomatik güncelleme kontrolü GitHub Releases üzerinden yayınlanan resmi derlemelerde aktiftir.</string>
     <string name="btn_retry">Tekrar Dene</string>
     <string name="btn_sign_out">Çıkış Yap</string>
 </resources>

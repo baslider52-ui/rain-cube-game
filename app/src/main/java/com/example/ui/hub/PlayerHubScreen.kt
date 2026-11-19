@@ -49,7 +49,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -594,7 +593,6 @@ fun PlayerHubScreen(
                         updateState = updateState,
                         repoSlug = repoSlug,
                         onCheckUpdates = { viewModel.checkForUpdates() },
-                        onConnectRepo = { input -> viewModel.connectAndCheckRepo(input) },
                         onOpenUrl = { url -> openExternalUrl(context, url) }
                     )
                 }
@@ -735,23 +733,8 @@ private fun GitHubUpdateCard(
     updateState: UpdateUiState,
     repoSlug: String,
     onCheckUpdates: () -> Unit,
-    onConnectRepo: (String) -> Boolean,
     onOpenUrl: (String) -> Unit
 ) {
-    var isEditingRepo by remember(updateState is UpdateUiState.NeedsRepoConfig) {
-        mutableStateOf(updateState is UpdateUiState.NeedsRepoConfig)
-    }
-    var repoInput by remember(repoSlug) { mutableStateOf(repoSlug) }
-
-    LaunchedEffect(updateState) {
-        if (updateState is UpdateUiState.UpdateAvailable ||
-            updateState is UpdateUiState.UpToDate ||
-            updateState is UpdateUiState.NoReleaseYet
-        ) {
-            isEditingRepo = false
-        }
-    }
-
     val hasAvailableUpdate = updateState is UpdateUiState.UpdateAvailable
 
     Card(
@@ -785,96 +768,47 @@ private fun GitHubUpdateCard(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.SystemUpdate,
-                        contentDescription = null,
-                        tint = if (hasAvailableUpdate) PendingAmber else ElectricCyan
-                    )
-                    Column {
-                        Text(
-                            text = stringResource(id = R.string.update_section_title),
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        val installedLabel = GitHubUpdateChecker.formatVersionTag(BuildConfig.VERSION_NAME)
-                        val subtitle = if (repoSlug.isNotBlank()) {
-                            "$installedLabel • $repoSlug"
-                        } else {
-                            "Yüklü Sürüm: $installedLabel"
-                        }
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                if (repoSlug.isNotBlank()) {
-                    TextButton(
-                        onClick = { isEditingRepo = !isEditingRepo },
-                        modifier = Modifier
-                            .minimumInteractiveComponentSize()
-                            .testTag("edit_repo_button")
-                    ) {
-                        Text(
-                            text = stringResource(id = R.string.update_edit_repo),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = ElectricCyan
-                        )
-                    }
-                }
-            }
-
-            if (isEditingRepo || updateState is UpdateUiState.NeedsRepoConfig) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(
+                    imageVector = Icons.Outlined.SystemUpdate,
+                    contentDescription = null,
+                    tint = if (hasAvailableUpdate) PendingAmber else ElectricCyan
+                )
+                Column {
                     Text(
-                        text = stringResource(id = R.string.update_connect_repo),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = stringResource(id = R.string.update_section_title),
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    OutlinedTextField(
-                        value = repoInput,
-                        onValueChange = { repoInput = it },
-                        singleLine = true,
-                        label = { Text(stringResource(id = R.string.update_repo_hint)) },
-                        placeholder = { Text("kullanici/rain-cube") },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("github_repo_input")
-                    )
-                    Button(
-                        onClick = {
-                            if (onConnectRepo(repoInput)) {
-                                isEditingRepo = false
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                            .testTag("save_repo_button"),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        Text(stringResource(id = R.string.update_save_and_check))
+                    val installedLabel = GitHubUpdateChecker.formatVersionTag(BuildConfig.VERSION_NAME)
+                    val subtitle = if (repoSlug.isNotBlank()) {
+                        "$installedLabel • $repoSlug"
+                    } else {
+                        "Yüklü Sürüm: $installedLabel"
                     }
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
 
             when (updateState) {
-                UpdateUiState.NeedsRepoConfig -> Unit
+                UpdateUiState.NeedsRepoConfig -> {
+                    Text(
+                        text = stringResource(id = R.string.update_auto_only_info),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
                 is UpdateUiState.Checking -> {
                     Row(

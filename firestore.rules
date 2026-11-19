@@ -65,6 +65,19 @@ service cloud.firestore {
              isValidTimestamp(data.createdAt);
     }
 
+    function isValidArenaPlayer(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80 &&
+             data.mode in ['classic', 'rush'] &&
+             data.worldX is number && data.worldX >= -10000000 && data.worldX <= 10000000 &&
+             data.worldY is number && data.worldY >= -10000000 && data.worldY <= 10000000 &&
+             data.score is int && data.score >= 0 && data.score <= 100000000 &&
+             data.shieldActive is bool &&
+             data.arenaStatus in ['active', 'offline'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
     // 1. User Profiles (PII isolated strictly to owner)
     match /users/{userId} {
       allow get: if isSignedIn() && isValidId(userId) && isOwner(userId);
@@ -148,6 +161,30 @@ service cloud.firestore {
                        isValidMatchRecord(incoming());
 
       allow update, delete: if false;
+    }
+
+    // 7. Live Online Arena Players (Owner writes own position/name; active players visible to signed-in players)
+    match /arena_players/{playerId} {
+      allow get: if isSignedIn() && isValidId(playerId) && (existing().arenaStatus == 'active' || isOwner(playerId));
+      allow list: if isSignedIn() && resource.data.arenaStatus == 'active';
+
+      allow create: if isSignedIn() &&
+                       isValidId(playerId) &&
+                       isOwner(playerId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'mode', 'worldX', 'worldY', 'score', 'shieldActive', 'arenaStatus', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'mode', 'worldX', 'worldY', 'score', 'shieldActive', 'arenaStatus', 'createdAt', 'updatedAt']) &&
+                       isValidArenaPlayer(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(playerId) &&
+                       isOwner(playerId) &&
+                       isValidArenaPlayer(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'mode', 'worldX', 'worldY', 'score', 'shieldActive', 'arenaStatus', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(playerId) && isOwner(playerId);
     }
   }
 }

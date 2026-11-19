@@ -332,3 +332,76 @@ test("MatchRecords: client can create pending_verification with xpEarned=0; cann
   );
   await assertFails(bobDb.collection("match_records").doc("match_ok_1").get());
 });
+
+test("ArenaPlayers: owner can publish position, signed-in players query active only, blocks tampering", async () => {
+  const unauthDb = testEnv.unauthenticatedContext().firestore();
+  const aliceDb = testEnv.authenticatedContext(ALICE_UID).firestore();
+  const bobDb = testEnv.authenticatedContext(BOB_UID).firestore();
+  const ts = pastTimestamp();
+
+  // Unauthenticated read blocked
+  await assertFails(
+    unauthDb.collection("arena_players").where("arenaStatus", "==", "active").get()
+  );
+
+  // Alice creates her live arena presence
+  await assertSucceeds(
+    aliceDb.collection("arena_players").doc(ALICE_UID).set({
+      userId: ALICE_UID,
+      displayName: "Alice Cube",
+      mode: "classic",
+      worldX: 1.5,
+      worldY: -2.25,
+      score: 320,
+      shieldActive: false,
+      arenaStatus: "active",
+      createdAt: ts,
+      updatedAt: ts,
+    })
+  );
+
+  // Unfiltered list fails
+  await assertFails(bobDb.collection("arena_players").get());
+
+  // Aligned active query succeeds for Bob
+  await assertSucceeds(
+    bobDb.collection("arena_players").where("arenaStatus", "==", "active").get()
+  );
+
+  // Bob cannot overwrite or delete Alice's arena presence
+  await assertFails(
+    bobDb.collection("arena_players").doc(ALICE_UID).update({
+      worldX: 99,
+      updatedAt: new Date(Date.now() - 1000),
+    })
+  );
+  await assertFails(bobDb.collection("arena_players").doc(ALICE_UID).delete());
+
+  // Alice cannot mutate createdAt or userId
+  await assertFails(
+    aliceDb.collection("arena_players").doc(ALICE_UID).update({
+      createdAt: new Date(Date.now() - 1000),
+      updatedAt: new Date(Date.now() - 1000),
+    })
+  );
+  await assertFails(
+    aliceDb.collection("arena_players").doc(ALICE_UID).update({
+      userId: BOB_UID,
+      updatedAt: new Date(Date.now() - 1000),
+    })
+  );
+
+  // Alice can move and later mark offline; offline doc is hidden from Bob
+  await assertSucceeds(
+    aliceDb.collection("arena_players").doc(ALICE_UID).update({
+      worldX: 12.75,
+      worldY: -8.5,
+      score: 640,
+      shieldActive: true,
+      arenaStatus: "offline",
+      updatedAt: new Date(Date.now() - 1000),
+    })
+  );
+  await assertFails(bobDb.collection("arena_players").doc(ALICE_UID).get());
+  await assertSucceeds(aliceDb.collection("arena_players").doc(ALICE_UID).get());
+});

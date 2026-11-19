@@ -45,8 +45,7 @@ class PlayerHubViewModel(
     private val matchRepository: MatchRecordRepository,
     private val authenticatedUser: AuthenticatedUser,
     initialRepoSlug: String = BuildConfig.GITHUB_REPO_SLUG,
-    private val currentVersionName: String = BuildConfig.VERSION_NAME,
-    private val onSaveRepoSlug: (String) -> String? = { GitHubUpdateChecker.normalizeRepoSlug(it) }
+    private val currentVersionName: String = BuildConfig.VERSION_NAME
 ) : ViewModel() {
 
     private val _syncNotice = MutableStateFlow<String?>(null)
@@ -155,30 +154,6 @@ class PlayerHubViewModel(
                 }
             }
         }
-    }
-
-    fun connectAndCheckRepo(rawInput: String): Boolean {
-        val trimmed = rawInput.trim()
-        if (trimmed.isEmpty()) {
-            _updateState.value = UpdateUiState.Error(
-                _repoSlug.value,
-                "GitHub depo adını girin (ör. kullanici/rain-cube)."
-            )
-            return false
-        }
-
-        val saved = onSaveRepoSlug(trimmed)
-        if (saved.isNullOrBlank()) {
-            _updateState.value = UpdateUiState.Error(
-                _repoSlug.value,
-                "Geçerli bir GitHub deposu girin (ör. kullanici/rain-cube veya GitHub linki)."
-            )
-            return false
-        }
-
-        _repoSlug.value = saved
-        checkForUpdates(saved)
-        return true
     }
 
     private companion object {

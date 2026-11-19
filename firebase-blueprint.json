@@ -308,6 +308,69 @@
         "clientVersion",
         "createdAt"
       ]
+    },
+    "ArenaPlayer": {
+      "title": "ArenaPlayer",
+      "description": "Real-time online player presence and world position in /arena_players/{playerId}.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Player Firebase Auth UID matching the document ID."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Public display name rendered above the player cube in the arena."
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["classic", "rush"],
+          "description": "Active arena mode."
+        },
+        "worldX": {
+          "type": "number",
+          "description": "Current horizontal coordinate on the infinite 2D map."
+        },
+        "worldY": {
+          "type": "number",
+          "description": "Current vertical coordinate on the infinite 2D map."
+        },
+        "score": {
+          "type": "integer",
+          "description": "Current live run score."
+        },
+        "shieldActive": {
+          "type": "boolean",
+          "description": "Whether the crown shield aura is currently active."
+        },
+        "arenaStatus": {
+          "type": "string",
+          "enum": ["active", "offline"],
+          "description": "Online presence state in the arena."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the player first joined the arena."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of the latest position/state heartbeat."
+        }
+      },
+      "required": [
+        "userId",
+        "displayName",
+        "mode",
+        "worldX",
+        "worldY",
+        "score",
+        "shieldActive",
+        "arenaStatus",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -334,6 +397,10 @@
     "/match_records/{matchId}": {
       "schema": { "$ref": "#/entities/MatchRecord" },
       "description": "Match records submitted in pending_verification state and verified server-side."
+    },
+    "/arena_players/{playerId}": {
+      "schema": { "$ref": "#/entities/ArenaPlayer" },
+      "description": "Live multiplayer positions and display names in the infinite arena."
     }
   }
 }

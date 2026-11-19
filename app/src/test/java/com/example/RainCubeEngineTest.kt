@@ -22,8 +22,8 @@ class RainCubeEngineTest {
             x = initial.playerX,
             y = initial.playerY,
             size = 0.044f,
-            speedY = 0f,
-            driftX = 0f,
+            vx = 0f,
+            vy = 0f,
             rotationDeg = 0f,
             rotationSpeed = 0f
         )
@@ -44,8 +44,8 @@ class RainCubeEngineTest {
             x = initial.playerX,
             y = initial.playerY,
             size = 0.064f,
-            speedY = 0f,
-            driftX = 0f,
+            vx = 0f,
+            vy = 0f,
             rotationDeg = 0f,
             rotationSpeed = 0f
         )
@@ -65,8 +65,8 @@ class RainCubeEngineTest {
             x = initial.playerX,
             y = initial.playerY,
             size = 0.07f,
-            speedY = 0f,
-            driftX = 0f,
+            vx = 0f,
+            vy = 0f,
             rotationDeg = 0f,
             rotationSpeed = 0f
         )
@@ -74,6 +74,24 @@ class RainCubeEngineTest {
 
         assertEquals(0, next.lives)
         assertEquals(GameStatus.GAME_OVER, next.status)
+    }
+
+    @Test
+    fun `joystick moves cube across unbounded infinite 2d map and camera follows`() {
+        val engine = RainCubeEngine(Random(42))
+        var state = engine.createInitialState(GameMode.CLASSIC, autoStart = true)
+            .copy(entities = emptyList())
+        state = engine.setJoystickInput(state, 1f, -1f)
+
+        repeat(90) {
+            state = engine.step(state, 0.03f)
+        }
+
+        // 1.0'ın ötesine geçerek haritanın sınırlandırılmadığını doğrula
+        assertTrue(state.playerX > 1.0f)
+        assertTrue(state.playerY < -1.0f)
+        assertTrue(state.cameraX > 0.8f)
+        assertTrue(state.cameraY < -0.8f)
     }
 
     @Test
