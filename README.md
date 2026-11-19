@@ -20,7 +20,7 @@ Oyuncular kendi küplerini yöneterek arenada hayatta kalmaya çalışır, skor 
 Rain Cube'ün en güncel Android sürümünü doğrudan GitHub üzerinden indirip telefonunuza kurabilirsiniz:
 
 1. Bu sayfanın sağ tarafındaki **Releases** bölümüne tıklayın (her güncellemede eski APK otomatik silinir ve en güncel sürüm yayınlanır).
-2. En güncel sürümün (ör. `Rain Cube v1.0.1`) altından **`RainCube-v1.x.x.apk`** dosyasını indirin.
+2. En güncel sürümün (ör. `Rain Cube v.1.0.0`) altından **`RainCube-v.1.x.x.apk`** dosyasını indirin.
 3. İndirilen APK dosyasına dokunun ve Android cihazınızda kurulumu onaylayın.
 4. Uygulamayı açıp **Google hesabınızla giriş yaparak** oyuncu profilinizi oluşturun.
 
@@ -30,7 +30,7 @@ Rain Cube'ün en güncel Android sürümünü doğrudan GitHub üzerinden indiri
 
 - **Tek Elle Rahat Kontrol:** Tamamen dikey (`Portrait`) ekran kullanımına uygun, akıcı mobil deneyim.
 - **Güvenli Oyuncu Profili:** Google hesabınızla tek dokunuşta giriş yapın; profiliniz, yüksek skorlarınız ve istatistikleriniz bulutta güvende kalsın.
-- **Uygulama İçi Güncelleme Kontrolü:** Oyuncu merkezi üzerinden GitHub Releases sürüm adını (`v1.x.x`) otomatik denetleyin ve yeni sürüm yayınlandığında APK'yı tek dokunuşla indirin.
+- **Uygulama İçi Güncelleme Kontrolü:** Oyuncu merkezi üzerinden GitHub Releases sürüm adını (`v.1.x.x`) otomatik denetleyin ve yeni sürüm yayınlandığında APK'yı tek dokunuşla indirin.
 - **Seviye ve İlerleme Sistemi:** Oynadığınız maçlardan kazandığınız puanlarla seviyenizi yükseltin.
 - **Genel & Haftalık Sıralamalar:** Diğer oyuncularla rekabet edin ve haftalık liderlik tablosunda yerinizi alın.
 

@@ -4,12 +4,13 @@ on:
   push:
     tags:
       - 'play-v*.*.*'
+      - 'play-v.*.*.*'
   workflow_dispatch:
     inputs:
       tag_name:
-        description: 'Release tag (ör. v1.0.1)'
+        description: 'Release tag (ör. v.1.0.0)'
         required: true
-        default: 'v1.0.1'
+        default: 'v.1.0.0'
 
 permissions:
   contents: write
@@ -79,7 +80,15 @@ jobs:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle :app:assembleRelease :app:bundleRelease -PgithubRepoSlug="${{ github.repository }}" --stacktrace
+          RAW_TAG: ${{ inputs.tag_name || github.ref_name }}
+        run: |
+          EXTRA_ARGS=""
+          if [[ "$RAW_TAG" =~ ^(play-)?v?\.?([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            V_NAME="${BASH_REMATCH[2]}.${BASH_REMATCH[3]}.${BASH_REMATCH[4]}"
+            V_CODE=$((BASH_REMATCH[2] * 10000 + BASH_REMATCH[3] * 100 + BASH_REMATCH[4]))
+            EXTRA_ARGS="-PappVersionName=${V_NAME} -PappVersionCode=${V_CODE}"
+          fi
+          gradle :app:assembleRelease :app:bundleRelease $EXTRA_ARGS -PgithubRepoSlug="${{ github.repository }}" --stacktrace
 
       - name: Prepare versioned release files
         run: |

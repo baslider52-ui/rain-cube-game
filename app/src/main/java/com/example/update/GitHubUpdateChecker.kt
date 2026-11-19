@@ -55,6 +55,9 @@ object UpdatePrefs {
 }
 
 object GitHubUpdateChecker {
+    const val MAX_MINOR_VERSION = 21
+    const val MAX_PATCH_VERSION = 12
+
     private val SEGMENT_REGEX = Regex("^[A-Za-z0-9._-]+$")
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 10_000
@@ -88,6 +91,8 @@ object GitHubUpdateChecker {
 
     fun parseSemVer(raw: String): List<Int> {
         val cleaned = raw.trim()
+            .removePrefix("v.")
+            .removePrefix("V.")
             .removePrefix("v")
             .removePrefix("V")
             .substringBefore('-')
@@ -95,12 +100,33 @@ object GitHubUpdateChecker {
             .trim()
         if (cleaned.isEmpty()) return emptyList()
 
-        val numbers = cleaned.split('.')
+        return cleaned.split('.')
             .mapNotNull { segment ->
                 val digits = segment.takeWhile { it.isDigit() }
                 digits.toIntOrNull()
             }
-        return numbers
+    }
+
+    fun formatVersionTag(raw: String): String {
+        val parts = parseSemVer(raw)
+        if (parts.size >= 3) {
+            return "v.${parts[0]}.${parts[1]}.${parts[2]}"
+        }
+        val stripped = raw.trim()
+            .removePrefix("v.")
+            .removePrefix("V.")
+            .removePrefix("v")
+            .removePrefix("V")
+            .ifEmpty { "1.0.0" }
+        return "v.$stripped"
+    }
+
+    fun nextVersion(major: Int, minor: Int, patch: Int): Triple<Int, Int, Int> {
+        return when {
+            patch < MAX_PATCH_VERSION -> Triple(major, minor, patch + 1)
+            minor < MAX_MINOR_VERSION -> Triple(major, minor + 1, 0)
+            else -> Triple(major + 1, 0, 0)
+        }
     }
 
     fun isNewerVersion(remoteVersion: String, currentVersion: String): Boolean {

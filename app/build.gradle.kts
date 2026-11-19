@@ -18,7 +18,7 @@ val versionProps = Properties().apply {
 }
 val propMajor = versionProps.getProperty("VERSION_MAJOR", "1").trim().toIntOrNull() ?: 1
 val propMinor = versionProps.getProperty("VERSION_MINOR", "0").trim().toIntOrNull() ?: 0
-val propPatch = versionProps.getProperty("VERSION_PATCH", "1").trim().toIntOrNull() ?: 1
+val propPatch = versionProps.getProperty("VERSION_PATCH", "0").trim().toIntOrNull() ?: 0
 
 val resolvedVersionName =
   (project.findProperty("appVersionName") as? String)?.takeIf { it.isNotBlank() }

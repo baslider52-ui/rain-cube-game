@@ -255,7 +255,11 @@ object AuthSessionManager {
                 throw e
             } catch (e: GetCredentialCancellationException) {
                 lastInteractiveAttemptFailed = true
-                val rawDetail = e.errorMessage?.toString() ?: e.message.orEmpty()
+                val rawDetail = listOfNotNull(
+                    e.errorMessage?.toString(),
+                    e.message,
+                    e.cause?.message
+                ).distinct().joinToString(" | ")
                 Log.w(TAG, "Google Sign-In flow cancelled or dismissed: $rawDetail", e)
                 val mappedDiagnostic = mapDiagnosticDetailOrNull(context, rawDetail)
                 if (mappedDiagnostic != null) {
@@ -281,8 +285,13 @@ object AuthSessionManager {
                 onAuthError("Giriş işlemi kesintiye uğradı. Lütfen tekrar deneyin.")
             } catch (e: GetCredentialException) {
                 lastInteractiveAttemptFailed = true
-                Log.e(TAG, "Google Sign-In credential exception: ${e.type} - ${e.errorMessage}", e)
-                onAuthError(mapCredentialErrorMessage(context, e.errorMessage?.toString()))
+                val rawDetail = listOfNotNull(
+                    e.errorMessage?.toString(),
+                    e.message,
+                    e.cause?.message
+                ).distinct().joinToString(" | ")
+                Log.e(TAG, "Google Sign-In credential exception: ${e.type} - $rawDetail", e)
+                onAuthError(mapCredentialErrorMessage(context, rawDetail))
             } catch (e: FirebaseNetworkException) {
                 lastInteractiveAttemptFailed = true
                 Log.e(TAG, "Firebase network error during Google Sign-In", e)
@@ -318,21 +327,23 @@ object AuthSessionManager {
         return null
     }
 
-    private fun mapDiagnosticDetailOrNull(context: Context, rawMessage: String?): String? {
+    internal fun mapDiagnosticDetailOrNull(context: Context, rawMessage: String?): String? {
         val msg = rawMessage.orEmpty()
         return when {
-            msg.contains("16:") ||
-                msg.contains("[16]") ||
-                msg.contains("temporarily blocked", ignoreCase = true) ||
-                msg.contains("too many canceled", ignoreCase = true) ||
-                msg.contains("cooldown", ignoreCase = true) ->
-                context.getString(R.string.auth_rate_limited_message)
             msg.contains("28444") ||
                 msg.contains("Developer console", ignoreCase = true) ||
+                msg.contains("Cannot find a matching credential", ignoreCase = true) ||
+                msg.contains("not whitelisted", ignoreCase = true) ||
                 msg.contains("10:") ||
                 msg.contains("[10]") ||
                 msg.contains("12500") ->
                 context.getString(R.string.auth_sha_mismatch_message)
+            msg.contains("temporarily blocked", ignoreCase = true) ||
+                msg.contains("too many canceled", ignoreCase = true) ||
+                msg.contains("cooldown", ignoreCase = true) ||
+                msg.contains("16:") ||
+                msg.contains("[16]") ->
+                context.getString(R.string.auth_rate_limited_message)
             msg.contains("network", ignoreCase = true) || msg.contains("7:") ->
                 "İnternet bağlantısı kurulamadı. Bağlantınızı kontrol edip tekrar deneyin."
             else -> null

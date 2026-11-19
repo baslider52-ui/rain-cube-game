@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       version_override:
-        description: 'İsteğe bağlı sürüm (ör. v1.1.0). Boş bırakılırsa otomatik artar.'
+        description: 'İsteğe bağlı sürüm (ör. v.1.1.0). Boş bırakılırsa otomatik artar.'
         required: false
         default: ''
 
@@ -57,44 +57,63 @@ jobs:
           VERSION_OVERRIDE: ${{ inputs.version_override }}
         run: |
           source version.properties
-          MAJOR="${VERSION_MAJOR:-1}"
-          MINOR="${VERSION_MINOR:-0}"
-          BASE_PATCH="${VERSION_PATCH:-1}"
+          export BASE_MAJOR="${VERSION_MAJOR:-1}"
+          export BASE_MINOR="${VERSION_MINOR:-0}"
+          export BASE_PATCH="${VERSION_PATCH:-0}"
+          export GIT_TAGS="$(git tag -l 2>/dev/null || true)"
+          export GH_TAGS="$(gh release list --limit 200 --json tagName --jq '.[].tagName' 2>/dev/null || true)"
 
-          CLEAN_OVERRIDE="${VERSION_OVERRIDE#v}"
-          if [[ "$CLEAN_OVERRIDE" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            MAJOR="${BASH_REMATCH[1]}"
-            MINOR="${BASH_REMATCH[2]}"
-            NEXT_PATCH="${BASH_REMATCH[3]}"
-          else
-            EXISTING_TAGS="$(git tag -l "v${MAJOR}.${MINOR}.*" 2>/dev/null || true)"
-            GH_TAGS="$(gh release list --limit 200 --json tagName --jq '.[].tagName' 2>/dev/null || true)"
-            ALL_TAGS="$(printf '%s\n%s\n' "$EXISTING_TAGS" "$GH_TAGS" | grep -E "^v${MAJOR}\.${MINOR}\.[0-9]+$" || true)"
+          python3 - << 'PY' >> "$GITHUB_OUTPUT"
+          import os
+          import re
+          import sys
 
-            MAX_PATCH=-1
-            while IFS= read -r tag; do
-              [ -z "$tag" ] && continue
-              patch="${tag##*.}"
-              if [ "$patch" -gt "$MAX_PATCH" ] 2>/dev/null; then
-                MAX_PATCH="$patch"
-              fi
-            done <<< "$ALL_TAGS"
+          PATTERN = re.compile(r"^v?\.?(\d+)\.(\d+)\.(\d+)$")
 
-            if [ "$MAX_PATCH" -ge "$BASE_PATCH" ]; then
-              NEXT_PATCH=$((MAX_PATCH + 1))
-            else
-              NEXT_PATCH="$BASE_PATCH"
-            fi
-          fi
+          def next_version(major: int, minor: int, patch: int) -> tuple[int, int, int]:
+              # Son basamak en fazla 12 (v.1.0.12 -> v.1.1.0)
+              if patch < 12:
+                  return (major, minor, patch + 1)
+              # Orta basamak en fazla 21 (v.1.21.12 -> v.2.0.0)
+              if minor < 21:
+                  return (major, minor + 1, 0)
+              return (major + 1, 0, 0)
 
-          VERSION_NAME="${MAJOR}.${MINOR}.${NEXT_PATCH}"
-          VERSION_TAG="v${VERSION_NAME}"
-          VERSION_CODE=$((MAJOR * 10000 + MINOR * 100 + NEXT_PATCH))
+          base = (
+              int(os.environ.get("BASE_MAJOR", "1")),
+              int(os.environ.get("BASE_MINOR", "0")),
+              int(os.environ.get("BASE_PATCH", "0")),
+          )
 
-          echo "version_name=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
-          echo "version_tag=${VERSION_TAG}" >> "$GITHUB_OUTPUT"
-          echo "version_code=${VERSION_CODE}" >> "$GITHUB_OUTPUT"
-          echo "Resolved release version: ${VERSION_TAG} (versionCode=${VERSION_CODE})"
+          override = os.environ.get("VERSION_OVERRIDE", "").strip()
+          override_match = PATTERN.match(override)
+          if override_match:
+              major, minor, patch = (int(g) for g in override_match.groups())
+          else:
+              candidates = []
+              for raw_line in (os.environ.get("GIT_TAGS", "") + "\n" + os.environ.get("GH_TAGS", "")).splitlines():
+                  m = PATTERN.match(raw_line.strip())
+                  if m:
+                      candidates.append(tuple(int(g) for g in m.groups()))
+
+              if candidates:
+                  latest = max(candidates)
+                  if latest >= base:
+                      major, minor, patch = next_version(*latest)
+                  else:
+                      major, minor, patch = base
+              else:
+                  major, minor, patch = base
+
+          version_name = f"{major}.{minor}.{patch}"
+          version_tag = f"v.{version_name}"
+          version_code = major * 10000 + minor * 100 + patch
+
+          print(f"version_name={version_name}")
+          print(f"version_tag={version_tag}")
+          print(f"version_code={version_code}")
+          print(f"Resolved release version: {version_tag} (versionCode={version_code})", file=sys.stderr)
+          PY
 
       - name: Prepare Firebase and consistent signing keystore
         env:
@@ -176,7 +195,7 @@ jobs:
           APK_FILE="dist/RainCube-${VERSION_TAG}.apk"
           cp app/build/outputs/apk/debug/app-debug.apk "$APK_FILE"
 
-          PREV_TAG="$(git tag -l 'v*.*.*' --sort=-v:refname | head -n 1 || true)"
+          PREV_TAG="$(git tag -l 'v*' --sort=-v:refname | grep -E '^v?\.?[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1 || true)"
           if [ -n "$PREV_TAG" ]; then
             CHANGES="$(git log "${PREV_TAG}..HEAD" --pretty=format:'- %s' --no-merges | head -n 15 || true)"
           else

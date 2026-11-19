@@ -52,4 +52,20 @@ class ExampleRobolectricTest {
 
         assertTrue(unauthenticatedCalled)
     }
+
+    @Test
+    fun `diagnostic mapper distinguishes SHA mismatch from Error 16 cooldown`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val shaError = AuthSessionManager.mapDiagnosticDetailOrNull(
+            context,
+            "16: [28444] Developer console is not set up correctly"
+        )
+        assertEquals(context.getString(R.string.auth_sha_mismatch_message), shaError)
+
+        val cooldownError = AuthSessionManager.mapDiagnosticDetailOrNull(
+            context,
+            "[16] Caller has been temporarily blocked due to too many canceled sign-in prompts."
+        )
+        assertEquals(context.getString(R.string.auth_rate_limited_message), cooldownError)
+    }
 }

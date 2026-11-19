@@ -179,7 +179,7 @@ fun PlayerHubScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
-                                        text = "v${BuildConfig.VERSION_NAME}",
+                                        text = GitHubUpdateChecker.formatVersionTag(BuildConfig.VERSION_NAME),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -190,7 +190,7 @@ fun PlayerHubScreen(
                                                 shape = RoundedCornerShape(6.dp)
                                             ) {
                                                 Text(
-                                                    text = "Yeni: ${currentUpdate.release.tagName}",
+                                                    text = "Yeni: ${GitHubUpdateChecker.formatVersionTag(currentUpdate.release.tagName)}",
                                                     style = MaterialTheme.typography.labelSmall.copy(
                                                         fontWeight = FontWeight.Bold
                                                     ),
@@ -675,7 +675,7 @@ private fun RecentMatchRow(match: MatchRecord) {
                         modifier = Modifier.size(14.dp)
                     )
                     Text(
-                        text = "$durationSec sn • v${match.clientVersion}",
+                        text = "$durationSec sn • ${GitHubUpdateChecker.formatVersionTag(match.clientVersion)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -807,10 +807,11 @@ private fun GitHubUpdateCard(
                             ),
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        val installedLabel = GitHubUpdateChecker.formatVersionTag(BuildConfig.VERSION_NAME)
                         val subtitle = if (repoSlug.isNotBlank()) {
-                            "v${BuildConfig.VERSION_NAME} • $repoSlug"
+                            "$installedLabel • $repoSlug"
                         } else {
-                            "Yüklü Sürüm: v${BuildConfig.VERSION_NAME}"
+                            "Yüklü Sürüm: $installedLabel"
                         }
                         Text(
                             text = subtitle,
@@ -907,7 +908,7 @@ private fun GitHubUpdateCard(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "${stringResource(id = R.string.update_available_badge)}: ${release.tagName}",
+                                text = "${stringResource(id = R.string.update_available_badge)}: ${GitHubUpdateChecker.formatVersionTag(release.tagName)}",
                                 style = MaterialTheme.typography.labelLarge.copy(
                                     fontWeight = FontWeight.Bold
                                 ),
@@ -964,7 +965,7 @@ private fun GitHubUpdateCard(
                         )
                         Spacer(modifier = Modifier.size(8.dp))
                         Text(
-                            text = "${stringResource(id = R.string.update_download_install)} (${release.tagName})",
+                            text = "${stringResource(id = R.string.update_download_install)} (${GitHubUpdateChecker.formatVersionTag(release.tagName)})",
                             style = MaterialTheme.typography.titleSmall.copy(
                                 fontWeight = FontWeight.Bold
                             )
@@ -1032,7 +1033,7 @@ private fun GitHubUpdateCard(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "En güncel sürümü kullanıyorsunuz (${release.tagName}).",
+                                text = "En güncel sürümü kullanıyorsunuz (${GitHubUpdateChecker.formatVersionTag(release.tagName)}).",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = VerifiedEmerald
                             )

@@ -39,13 +39,30 @@ class GitHubUpdateCheckerTest {
     }
 
     @Test
-    fun `isNewerVersion compares semantic versions accurately`() {
-        assertTrue(GitHubUpdateChecker.isNewerVersion("v1.0.2", "1.0.1"))
-        assertTrue(GitHubUpdateChecker.isNewerVersion("v1.0.10", "v1.0.2"))
-        assertTrue(GitHubUpdateChecker.isNewerVersion("v2.0.0", "1.9.9"))
-        assertFalse(GitHubUpdateChecker.isNewerVersion("v1.0.1", "1.0.1"))
-        assertFalse(GitHubUpdateChecker.isNewerVersion("v1.0.0", "1.0.1"))
+    fun `isNewerVersion compares semantic versions accurately including v dot prefix`() {
+        assertTrue(GitHubUpdateChecker.isNewerVersion("v.1.0.2", "1.0.1"))
+        assertTrue(GitHubUpdateChecker.isNewerVersion("v.1.1.0", "v.1.0.12"))
+        assertTrue(GitHubUpdateChecker.isNewerVersion("v.2.0.0", "v.1.21.12"))
+        assertTrue(GitHubUpdateChecker.isNewerVersion("v.1.0.10", "v.1.0.2"))
+        assertFalse(GitHubUpdateChecker.isNewerVersion("v.1.0.1", "1.0.1"))
+        assertFalse(GitHubUpdateChecker.isNewerVersion("v.1.0.12", "1.1.0"))
         assertFalse(GitHubUpdateChecker.isNewerVersion("invalid", "1.0.1"))
+    }
+
+    @Test
+    fun `nextVersion rolls over at patch 12 and minor 21`() {
+        assertEquals(Triple(1, 0, 1), GitHubUpdateChecker.nextVersion(1, 0, 0))
+        assertEquals(Triple(1, 0, 12), GitHubUpdateChecker.nextVersion(1, 0, 11))
+        assertEquals(Triple(1, 1, 0), GitHubUpdateChecker.nextVersion(1, 0, 12))
+        assertEquals(Triple(1, 21, 12), GitHubUpdateChecker.nextVersion(1, 21, 11))
+        assertEquals(Triple(2, 0, 0), GitHubUpdateChecker.nextVersion(1, 21, 12))
+    }
+
+    @Test
+    fun `formatVersionTag normalizes plain and v-prefixed versions to v dot format`() {
+        assertEquals("v.1.0.0", GitHubUpdateChecker.formatVersionTag("1.0.0"))
+        assertEquals("v.1.1.0", GitHubUpdateChecker.formatVersionTag("v1.1.0"))
+        assertEquals("v.1.21.12", GitHubUpdateChecker.formatVersionTag("v.1.21.12"))
     }
 
     @Test
