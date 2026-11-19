@@ -30,6 +30,7 @@ Rain Cube'ün en güncel Android sürümünü doğrudan GitHub üzerinden indiri
 
 - **Tek Elle Rahat Kontrol:** Tamamen dikey (`Portrait`) ekran kullanımına uygun, akıcı mobil deneyim.
 - **Güvenli Oyuncu Profili:** Google hesabınızla tek dokunuşta giriş yapın; profiliniz, yüksek skorlarınız ve istatistikleriniz bulutta güvende kalsın.
+- **Uygulama İçi Güncelleme Kontrolü:** Oyuncu merkezi üzerinden GitHub Releases sürüm adını (`v1.x.x`) otomatik denetleyin ve yeni sürüm yayınlandığında APK'yı tek dokunuşla indirin.
 - **Seviye ve İlerleme Sistemi:** Oynadığınız maçlardan kazandığınız puanlarla seviyenizi yükseltin.
 - **Genel & Haftalık Sıralamalar:** Diğer oyuncularla rekabet edin ve haftalık liderlik tablosunda yerinizi alın.
 
@@ -41,7 +42,7 @@ Rain Cube adım adım geliştirilmektedir:
 
 - [x] Uygulama tasarımı, özel ikon ve oyuncu girişi
 - [x] Oyuncu profili ve bulut kayıt altyapısı
-- [x] GitHub üzerinden otomatik APK dağıtımı
+- [x] GitHub üzerinden otomatik APK dağıtımı ve uygulama içi sürüm kontrolü
 - [x] Ana oyun arenası ve küp kontrol mekanikleri (Klasik Arena & Hız Fırtınası)
 - [x] İz efekti, taç kalkanı, engeller ve bulut maç kaydı
 - [ ] Genel ve haftalık sıralama ekranları

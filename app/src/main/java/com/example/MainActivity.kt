@@ -29,6 +29,7 @@ import com.example.ui.game.RainCubeGameViewModel
 import com.example.ui.hub.PlayerHubScreen
 import com.example.ui.hub.PlayerHubViewModel
 import com.example.ui.theme.RainCubeTheme
+import com.example.update.UpdatePrefs
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 
@@ -86,7 +87,13 @@ fun RainCubeRoot() {
                         PlayerHubViewModel(
                             repository = UserProfileRepository(db = firestore, auth = auth),
                             matchRepository = MatchRecordRepository(db = firestore, auth = auth),
-                            authenticatedUser = authenticatedUser
+                            authenticatedUser = authenticatedUser,
+                            initialRepoSlug = UpdatePrefs.getEffectiveRepoSlug(
+                                app,
+                                BuildConfig.GITHUB_REPO_SLUG
+                            ),
+                            currentVersionName = BuildConfig.VERSION_NAME,
+                            onSaveRepoSlug = { raw -> UpdatePrefs.saveCustomRepoSlug(app, raw) }
                         )
                     }
                 }

@@ -4,8 +4,10 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.positionChange
+import java.util.Locale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -154,19 +156,31 @@ fun RainCubeGameScreen(
                     .fillMaxSize()
                     .testTag("rain_cube_arena_canvas")
                     .pointerInput(gameState.status) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            if (gameState.status == GameStatus.RUNNING && size.width > 0) {
-                                viewModel.movePlayerBy(dragAmount.x / size.width.toFloat())
-                            }
-                        }
-                    }
-                    .pointerInput(gameState.status) {
-                        detectTapGestures { offset ->
-                            if (gameState.status == GameStatus.RUNNING && size.width > 0) {
-                                viewModel.movePlayerTo(offset.x / size.width.toFloat())
-                            } else if (gameState.status == GameStatus.READY) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            if (size.width <= 0) return@awaitEachGesture
+                            if (gameState.status == GameStatus.READY) {
                                 viewModel.startOrResume()
+                            } else if (gameState.status == GameStatus.RUNNING) {
+                                viewModel.movePlayerTo(down.position.x / size.width.toFloat())
+                            }
+                            down.consume()
+
+                            var dragged = false
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+                                    ?: event.changes.firstOrNull()
+                                    ?: break
+                                if (!change.pressed) break
+                                val deltaX = change.positionChange().x
+                                if (deltaX != 0f && gameState.status == GameStatus.RUNNING) {
+                                    dragged = true
+                                    viewModel.movePlayerBy(deltaX / size.width.toFloat())
+                                    change.consume()
+                                } else if (!dragged && gameState.status == GameStatus.RUNNING) {
+                                    viewModel.movePlayerTo(change.position.x / size.width.toFloat())
+                                }
                             }
                         }
                     }
@@ -376,7 +390,7 @@ private fun GameHudOverlay(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "TAÇ KALKANI 2x • ${String.format("%.1f", state.shieldSeconds)}s",
+                        text = "TAÇ KALKANI 2x • ${String.format(Locale.US, "%.1f", state.shieldSeconds)}s",
                         style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                         color = PendingAmber
                     )

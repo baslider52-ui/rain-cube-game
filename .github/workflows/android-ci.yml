@@ -152,8 +152,10 @@ jobs:
             --tests 'com.example.ExampleUnitTest' \
             --tests 'com.example.ExampleRobolectricTest' \
             --tests 'com.example.RainCubeEngineTest' \
+            --tests 'com.example.GitHubUpdateCheckerTest' \
             -PappVersionName="${{ steps.version.outputs.version_name }}" \
             -PappVersionCode="${{ steps.version.outputs.version_code }}" \
+            -PgithubRepoSlug="${{ github.repository }}" \
             --stacktrace
 
       - name: Build Versioned APK
@@ -161,6 +163,7 @@ jobs:
           gradle :app:assembleDebug \
             -PappVersionName="${{ steps.version.outputs.version_name }}" \
             -PappVersionCode="${{ steps.version.outputs.version_code }}" \
+            -PgithubRepoSlug="${{ github.repository }}" \
             --stacktrace
 
       - name: Prepare downloadable APK and announcement notes

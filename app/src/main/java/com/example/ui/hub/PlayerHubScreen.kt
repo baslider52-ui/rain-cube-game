@@ -1,5 +1,9 @@
 package com.example.ui.hub
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,29 +27,36 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.FlashOn
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,6 +93,7 @@ import com.example.ui.theme.PendingAmber
 import com.example.ui.theme.PendingAmberContainer
 import com.example.ui.theme.VerifiedEmerald
 import com.example.ui.theme.VerifiedEmeraldContainer
+import com.example.update.GitHubUpdateChecker
 
 @Composable
 fun PlayerHubScreen(
@@ -95,6 +107,8 @@ fun PlayerHubScreen(
     val stats by viewModel.playerStats.collectAsStateWithLifecycle()
     val recentMatches by viewModel.recentMatches.collectAsStateWithLifecycle()
     val syncNotice by viewModel.syncNotice.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val repoSlug by viewModel.repoSlug.collectAsStateWithLifecycle()
 
     val liveProfile = (hubState as? PlayerHubUiState.Ready)?.profile
     val displayName = liveProfile?.displayName?.takeIf { it.isNotBlank() } ?: user.displayName
@@ -160,11 +174,47 @@ fun PlayerHubScreen(
                                     ),
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
-                                Text(
-                                    text = "v${BuildConfig.VERSION_NAME}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "v${BuildConfig.VERSION_NAME}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    when (val currentUpdate = updateState) {
+                                        is UpdateUiState.UpdateAvailable -> {
+                                            Surface(
+                                                color = PendingAmberContainer,
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Yeni: ${currentUpdate.release.tagName}",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontWeight = FontWeight.Bold
+                                                    ),
+                                                    color = PendingAmber,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        is UpdateUiState.UpToDate -> {
+                                            Surface(
+                                                color = VerifiedEmeraldContainer,
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = stringResource(id = R.string.update_up_to_date),
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = VerifiedEmerald,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+                                        else -> Unit
+                                    }
+                                }
                             }
                         }
 
@@ -538,6 +588,17 @@ fun PlayerHubScreen(
                     }
                 }
 
+                // Sürüm ve GitHub Güncellemeleri
+                item {
+                    GitHubUpdateCard(
+                        updateState = updateState,
+                        repoSlug = repoSlug,
+                        onCheckUpdates = { viewModel.checkForUpdates() },
+                        onConnectRepo = { input -> viewModel.connectAndCheckRepo(input) },
+                        onOpenUrl = { url -> openExternalUrl(context, url) }
+                    )
+                }
+
                 // Son Maçlar
                 item {
                     Text(
@@ -666,5 +727,455 @@ private fun StatTile(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+    }
+}
+
+@Composable
+private fun GitHubUpdateCard(
+    updateState: UpdateUiState,
+    repoSlug: String,
+    onCheckUpdates: () -> Unit,
+    onConnectRepo: (String) -> Boolean,
+    onOpenUrl: (String) -> Unit
+) {
+    var isEditingRepo by remember(updateState is UpdateUiState.NeedsRepoConfig) {
+        mutableStateOf(updateState is UpdateUiState.NeedsRepoConfig)
+    }
+    var repoInput by remember(repoSlug) { mutableStateOf(repoSlug) }
+
+    LaunchedEffect(updateState) {
+        if (updateState is UpdateUiState.UpdateAvailable ||
+            updateState is UpdateUiState.UpToDate ||
+            updateState is UpdateUiState.NoReleaseYet
+        ) {
+            isEditingRepo = false
+        }
+    }
+
+    val hasAvailableUpdate = updateState is UpdateUiState.UpdateAvailable
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("github_update_card")
+            .then(
+                if (hasAvailableUpdate) {
+                    Modifier.border(
+                        width = 1.5.dp,
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(PendingAmber, ElectricCyan)
+                        ),
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                } else {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = ElectricCyan.copy(alpha = 0.25f),
+                        shape = RoundedCornerShape(20.dp)
+                    )
+                }
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.SystemUpdate,
+                        contentDescription = null,
+                        tint = if (hasAvailableUpdate) PendingAmber else ElectricCyan
+                    )
+                    Column {
+                        Text(
+                            text = stringResource(id = R.string.update_section_title),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        val subtitle = if (repoSlug.isNotBlank()) {
+                            "v${BuildConfig.VERSION_NAME} • $repoSlug"
+                        } else {
+                            "Yüklü Sürüm: v${BuildConfig.VERSION_NAME}"
+                        }
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (repoSlug.isNotBlank()) {
+                    TextButton(
+                        onClick = { isEditingRepo = !isEditingRepo },
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("edit_repo_button")
+                    ) {
+                        Text(
+                            text = stringResource(id = R.string.update_edit_repo),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = ElectricCyan
+                        )
+                    }
+                }
+            }
+
+            if (isEditingRepo || updateState is UpdateUiState.NeedsRepoConfig) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = stringResource(id = R.string.update_connect_repo),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = repoInput,
+                        onValueChange = { repoInput = it },
+                        singleLine = true,
+                        label = { Text(stringResource(id = R.string.update_repo_hint)) },
+                        placeholder = { Text("kullanici/rain-cube") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("github_repo_input")
+                    )
+                    Button(
+                        onClick = {
+                            if (onConnectRepo(repoInput)) {
+                                isEditingRepo = false
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .testTag("save_repo_button"),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Text(stringResource(id = R.string.update_save_and_check))
+                    }
+                }
+            }
+
+            when (updateState) {
+                UpdateUiState.NeedsRepoConfig -> Unit
+
+                is UpdateUiState.Checking -> {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = ElectricCyan
+                        )
+                        Text(
+                            text = stringResource(id = R.string.update_checking),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                is UpdateUiState.UpdateAvailable -> {
+                    val release = updateState.release
+                    Surface(
+                        color = PendingAmberContainer,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${stringResource(id = R.string.update_available_badge)}: ${release.tagName}",
+                                style = MaterialTheme.typography.labelLarge.copy(
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = PendingAmber
+                            )
+                            val sizeLabel = GitHubUpdateChecker.formatApkSize(release.apkSizeBytes)
+                            if (sizeLabel.isNotBlank()) {
+                                Text(
+                                    text = sizeLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = PendingAmber
+                                )
+                            }
+                        }
+                    }
+
+                    if (!release.apkFileName.isNullOrBlank()) {
+                        Text(
+                            text = "APK: ${release.apkFileName}",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = ElectricCyan
+                        )
+                    }
+
+                    if (release.releaseNotes.isNotBlank()) {
+                        Text(
+                            text = release.releaseNotes.replace("#", "").trim(),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 4,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            onOpenUrl(release.apkDownloadUrl ?: release.releasePageUrl)
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .testTag("download_update_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PendingAmber,
+                            contentColor = MidnightVoid
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.CloudDownload,
+                            contentDescription = null
+                        )
+                        Spacer(modifier = Modifier.size(8.dp))
+                        Text(
+                            text = "${stringResource(id = R.string.update_download_install)} (${release.tagName})",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            )
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = { onOpenUrl(release.releasePageUrl) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("open_releases_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.OpenInNew,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text(
+                                text = stringResource(id = R.string.update_open_releases),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onCheckUpdates,
+                            modifier = Modifier
+                                .height(48.dp)
+                                .testTag("check_update_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Refresh,
+                                contentDescription = stringResource(id = R.string.update_check_now),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                is UpdateUiState.UpToDate -> {
+                    val release = updateState.release
+                    Surface(
+                        color = VerifiedEmeraldContainer,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Verified,
+                                contentDescription = null,
+                                tint = VerifiedEmerald,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = "En güncel sürümü kullanıyorsunuz (${release.tagName}).",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = VerifiedEmerald
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onCheckUpdates,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("check_update_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Refresh,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text(
+                                text = "Yeniden Kontrol Et",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                onOpenUrl(release.apkDownloadUrl ?: release.releasePageUrl)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("open_releases_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.CloudDownload,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.size(6.dp))
+                            Text(
+                                text = "APK İndir",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                is UpdateUiState.NoReleaseYet -> {
+                    Text(
+                        text = "GitHub deposunda (${updateState.repoSlug}) henüz yayınlanmış bir APK sürümü bulunamadı.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onCheckUpdates,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("check_update_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(stringResource(id = R.string.update_check_now))
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                onOpenUrl(GitHubUpdateChecker.releasesPageUrl(updateState.repoSlug))
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("open_releases_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(stringResource(id = R.string.update_open_releases))
+                        }
+                    }
+                }
+
+                is UpdateUiState.Error -> {
+                    Text(
+                        text = updateState.message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = PendingAmber
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = onCheckUpdates,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(48.dp)
+                                .testTag("check_update_button"),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(stringResource(id = R.string.btn_retry))
+                        }
+                        if (repoSlug.isNotBlank()) {
+                            OutlinedButton(
+                                onClick = {
+                                    onOpenUrl(GitHubUpdateChecker.releasesPageUrl(repoSlug))
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("open_releases_button"),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text(stringResource(id = R.string.update_open_releases))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun openExternalUrl(context: Context, url: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    runCatching {
+        context.startActivity(intent)
+    }.onFailure {
+        Toast.makeText(
+            context,
+            "Bağlantı açılamadı. Lütfen tarayıcı ayarlarınızı kontrol edin.",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 }

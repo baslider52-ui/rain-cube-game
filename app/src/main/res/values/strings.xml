@@ -32,6 +32,17 @@
     <string name="game_saving_score">Skor buluta kaydediliyor…</string>
     <string name="game_score_saved">Skor bulut profiline kaydedildi</string>
     <string name="game_score_save_failed">Skor kaydedilemedi. Bağlantını kontrol et.</string>
+    <string name="update_section_title">Sürüm ve GitHub Güncellemeleri</string>
+    <string name="update_check_now">Güncellemeyi Kontrol Et</string>
+    <string name="update_checking">GitHub Releases kontrol ediliyor…</string>
+    <string name="update_up_to_date">Uygulama güncel</string>
+    <string name="update_available_badge">Yeni Sürüm Var</string>
+    <string name="update_download_install">Yeni Sürümü İndir</string>
+    <string name="update_open_releases">GitHub Releases</string>
+    <string name="update_connect_repo">GitHub Deposunu Bağla</string>
+    <string name="update_repo_hint">kullanici/depo veya GitHub linki</string>
+    <string name="update_save_and_check">Bağla ve Kontrol Et</string>
+    <string name="update_edit_repo">Depoyu Değiştir</string>
     <string name="btn_retry">Tekrar Dene</string>
     <string name="btn_sign_out">Çıkış Yap</string>
 </resources>

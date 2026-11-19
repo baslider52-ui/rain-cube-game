@@ -79,7 +79,7 @@ jobs:
           KEYSTORE_PATH: ${{ github.workspace }}/my-upload-key.jks
           STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: gradle :app:assembleRelease :app:bundleRelease --stacktrace
+        run: gradle :app:assembleRelease :app:bundleRelease -PgithubRepoSlug="${{ github.repository }}" --stacktrace
 
       - name: Prepare versioned release files
         run: |

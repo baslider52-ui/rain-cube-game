@@ -26,6 +26,10 @@ val resolvedVersionName =
 val resolvedVersionCode =
   (project.findProperty("appVersionCode") as? String)?.toIntOrNull()
     ?: (propMajor * 10000 + propMinor * 100 + propPatch)
+val resolvedGithubRepo =
+  (project.findProperty("githubRepoSlug") as? String)?.trim()?.takeIf { it.isNotBlank() }
+    ?: System.getenv("GITHUB_REPOSITORY")?.trim()?.takeIf { it.isNotBlank() }
+    ?: ""
 
 android {
   namespace = "com.example"
@@ -37,6 +41,12 @@ android {
     targetSdk = 36
     versionCode = resolvedVersionCode
     versionName = resolvedVersionName
+
+    buildConfigField(
+      "String",
+      "GITHUB_REPO_SLUG",
+      "\"${resolvedGithubRepo.replace("\"", "")}\""
+    )
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
