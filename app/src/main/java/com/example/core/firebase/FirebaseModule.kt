@@ -1,8 +1,8 @@
 package com.example.core.firebase
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
-import com.example.R
 import com.google.firebase.Firebase
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.auth.FirebaseAuth
@@ -11,12 +11,31 @@ import com.google.firebase.firestore.FirebaseFirestore
 
 /**
  * Firebase servis sağlayıcı katmanı.
- * Tüm Firestore istemcileri zorunlu olarak R.string.firestore_database_id ile başlatılır.
+ * Tüm Firestore istemcileri zorunlu olarak firestore_database_id kaynağı ile başlatılır.
  */
 object FirebaseModule {
 
+    @SuppressLint("DiscouragedApi")
+    fun resolveDatabaseId(context: Context): String {
+        val appContext = context.applicationContext
+        val candidatePackages = listOfNotNull(
+            appContext.packageName,
+            appContext.applicationInfo?.packageName,
+            "com.example"
+        ).distinct()
+
+        for (pkg in candidatePackages) {
+            val resId = appContext.resources.getIdentifier("firestore_database_id", "string", pkg)
+            if (resId != 0) {
+                val value = runCatching { appContext.getString(resId) }.getOrNull()
+                if (!value.isNullOrBlank()) return value
+            }
+        }
+        return ""
+    }
+
     fun provideFirestore(context: Context): FirebaseFirestore {
-        val databaseId = context.applicationContext.getString(R.string.firestore_database_id)
+        val databaseId = resolveDatabaseId(context)
         require(databaseId.isNotBlank()) {
             "firestore_database_id cannot be blank in firebase_applet_config.xml"
         }

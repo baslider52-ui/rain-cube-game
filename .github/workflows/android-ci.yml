@@ -122,7 +122,25 @@ jobs:
           FIREBASE_APPLET_CONFIG_XML: ${{ secrets.FIREBASE_APPLET_CONFIG_XML }}
           FIREBASE_APPLET_CONFIG_XML_BASE64: ${{ secrets.FIREBASE_APPLET_CONFIG_XML_BASE64 }}
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          IS_RELEASE_PUBLISH: ${{ github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
         run: |
+          if [ "$IS_RELEASE_PUBLISH" = "true" ]; then
+            MISSING=""
+            if [ -z "$GOOGLE_SERVICES_JSON" ] && [ -z "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+              MISSING="${MISSING} GOOGLE_SERVICES_JSON"
+            fi
+            if [ -z "$FIREBASE_APPLET_CONFIG_XML" ] && [ -z "$FIREBASE_APPLET_CONFIG_XML_BASE64" ]; then
+              MISSING="${MISSING} FIREBASE_APPLET_CONFIG_XML"
+            fi
+            if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
+              MISSING="${MISSING} DEBUG_KEYSTORE_BASE64"
+            fi
+            if [ -n "$MISSING" ]; then
+              echo "::error::GitHub Release APK yayini icin zorunlu secret'lar eksik:${MISSING}. Tum APK'larin ayni imzaya sahip olmasi ve Google girisinin calismasi icin Settings > Secrets and variables > Actions altina ekleyin."
+              exit 1
+            fi
+          fi
+
           if [ -n "$GOOGLE_SERVICES_JSON" ]; then
             printf '%s\n' "$GOOGLE_SERVICES_JSON" > app/google-services.json
             echo "Firebase JSON secret loaded."
@@ -130,7 +148,7 @@ jobs:
             printf '%s' "$GOOGLE_SERVICES_JSON_BASE64" | tr -d '[:space:]' | base64 --decode > app/google-services.json
             echo "Firebase JSON base64 secret decoded."
           else
-            echo "::warning::GOOGLE_SERVICES_JSON secret is NOT set; Firebase Auth/Firestore will be inactive in this APK."
+            echo "::warning::GOOGLE_SERVICES_JSON secret is NOT set; Firebase Auth/Firestore will be inactive in this PR check."
           fi
 
           if [ -f app/google-services.json ]; then
@@ -150,7 +168,7 @@ jobs:
               <string name="firestore_database_id" translatable="false">ci-placeholder-db</string>
           </resources>
           EOF
-            echo "::warning::FIREBASE_APPLET_CONFIG_XML not set; using placeholder firestore_database_id for CI build."
+            echo "::warning::FIREBASE_APPLET_CONFIG_XML not set; using placeholder firestore_database_id for PR check."
           fi
 
           if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
@@ -160,9 +178,9 @@ jobs:
             keytool -genkeypair -keystore debug.keystore -storepass android \
               -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
               -validity 10000 -dname "CN=Rain Cube,O=RainCube,C=TR"
-            echo "Initialized shared CI debug.keystore for consistent APK signing."
+            echo "Initialized temporary debug.keystore for PR check."
           else
-            echo "Reusing cached debug.keystore for identical APK signing identity."
+            echo "Reusing cached debug.keystore for PR check."
           fi
 
       - name: Run unit tests

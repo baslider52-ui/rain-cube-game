@@ -3,7 +3,7 @@ package com.example.core.config
 import android.annotation.SuppressLint
 import android.content.Context
 import com.example.BuildConfig
-import com.example.R
+import com.example.core.firebase.FirebaseModule
 
 /**
  * Merkezi uygulama ve ortam yapılandırma okuyucusu.
@@ -24,9 +24,7 @@ object InfrastructureConfig {
 
     @SuppressLint("DiscouragedApi")
     fun load(context: Context): InfrastructureConfigSnapshot {
-        val databaseId = runCatching {
-            context.getString(R.string.firestore_database_id).takeIf { it.isNotBlank() }
-        }.getOrNull()
+        val databaseId = FirebaseModule.resolveDatabaseId(context).takeIf { it.isNotBlank() }
 
         val webClientResId = context.resources.getIdentifier(
             "default_web_client_id",
